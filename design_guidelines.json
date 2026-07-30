@@ -1,0 +1,113 @@
+{
+  "theme_strategy": {
+    "default_theme": "light",
+    "justification": "Internal data-heavy operational dashboard. Light theme provides better legibility for dense tables, complex multi-step forms, and Looker Studio-style analytics. Users are travel admins processing orders in standard office lighting."
+  },
+  "typography": {
+    "headings": {
+      "font_family": "Chivo, sans-serif",
+      "usage": "Use for all dashboard titles, page headers, KPI numbers, and card titles. Do NOT use Inter.",
+      "weights": ["400", "700", "900"],
+      "classes": "font-sans tracking-tight text-slate-900"
+    },
+    "body": {
+      "font_family": "IBM Plex Sans, sans-serif",
+      "usage": "Use for all tables, form inputs, labels, and standard body text. Excellent for tabular figures and currency (Rupiah).",
+      "weights": ["400", "500", "600"],
+      "classes": "font-sans text-slate-600"
+    },
+    "scale_rules": {
+      "h1": "text-3xl md:text-4xl font-bold tracking-tight text-slate-900",
+      "h2": "text-xl md:text-2xl font-semibold text-slate-800",
+      "h3": "text-lg md:text-xl font-medium text-slate-800",
+      "kpi_number": "text-4xl md:text-5xl font-black tracking-tighter text-slate-900",
+      "body": "text-sm md:text-base",
+      "labels": "text-xs font-semibold uppercase tracking-[0.1em] text-slate-500"
+    }
+  },
+  "colors": {
+    "archetype": "SWISS & HIGH-CONTRAST (Modified for Enterprise SaaS)",
+    "palette": {
+      "background": "bg-slate-50 (#F8FAFC) - Default app background",
+      "surface": "bg-white (#FFFFFF) - Dashboard cards, tables, forms",
+      "primary": "bg-emerald-600 (#059669) - Main CTAs, active states, representing margin/profit/growth",
+      "primary_hover": "hover:bg-emerald-700 (#047857)",
+      "secondary": "bg-slate-900 (#0F172A) - Secondary buttons, Sidebar background",
+      "border": "border-slate-200 (#E2E8F0) - Used for all grids, tables, and cards",
+      "text_main": "text-slate-900 (#0F172A)",
+      "text_muted": "text-slate-500 (#64748B)",
+      "destructive": "bg-red-600 (#DC2626) - For delete actions/negative margins"
+    },
+    "chart_colors": [
+      "hsl(152, 69%, 31%)", 
+      "hsl(217, 91%, 60%)", 
+      "hsl(35, 92%, 53%)", 
+      "hsl(280, 65%, 60%)", 
+      "hsl(340, 75%, 55%)"
+    ],
+    "rules": [
+      "Do NOT use pure #000000 or #808080. Use Slate palette.",
+      "Hover states must be explicitly defined with higher contrast (e.g., hover:bg-emerald-700 hover:text-white).",
+      "No teal green (#1B93A4) for dashboards. Use Emerald or Indigo instead.",
+      "NEVER use fully transparent backgrounds for navbars, dropdowns, or modals. Always use solid white or a heavily blurred semi-solid surface."
+    ]
+  },
+  "layouts": {
+    "app_structure": "Left Sidebar Navigation (Dark Slate) + Top Header (White, Sticky, glassmorphism disabled, solid instead) + Main Content Area (Slate 50).",
+    "dashboard_grid": {
+      "type": "Looker Studio Style Bento Grid",
+      "kpi_row": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6",
+      "chart_row": "grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6",
+      "chart_main": "col-span-1 lg:col-span-8 (e.g., Line Chart for Trends)",
+      "chart_side": "col-span-1 lg:col-span-4 (e.g., Donut Chart or Top Drivers)",
+      "table_row": "col-span-1 lg:col-span-12 (Full width for detailed data tables)"
+    },
+    "spacing": {
+      "card_padding": "p-6",
+      "section_gap": "gap-8",
+      "dense_data": "gap-2"
+    }
+  },
+  "components": {
+    "cards": "Flat design. bg-white border border-slate-200 rounded-xl shadow-sm. NO heavy drop shadows. Title at top left, action (Export Excel) at top right.",
+    "tables": "Shadcn UI tables. Very dense formatting. Text size text-sm. Right-align all numerical and currency columns. Left-align text. Use sticky header for long lists.",
+    "forms": "Multi-step wizard for Input Transaksi Order. Horizontal progress indicator on top. Step 1: Info Dasar. Step 2: Biaya Operasional. Step 3: Multi-Driver Assignment. Use Shadcn inputs and date pickers. Never use native inputs.",
+    "buttons": "Slightly rounded (rounded-md), crisp edges, hover transitions (transform & color). Use Lucide icons inside buttons.",
+    "charts": "Shadcn Charts (Recharts). Looker Studio style requires clean grids, visible axes, and clear legends. Disable 3D styling. Emphasize tooltips with clear Rupiah formatting.",
+    "modals": "Use Shadcn Dialog. Solid background. Overlay must be bg-black/40 (max 50% opacity)."
+  },
+  "motion": {
+    "interactions": "Subtle scale down on click (active:scale-95). Fast transitions (duration-150 ease-in-out) for colors.",
+    "page_load": "Staggered fade-in for dashboard widgets to simulate progressive data loading.",
+    "accessibility": "Respect prefers-reduced-motion. Ensure focus rings (ring-2 ring-emerald-500) are prominent."
+  },
+  "specific_features": {
+    "currency_formatting": "Always format money as: Rp 1.000.000. Right-aligned in tables. Use Indonesian locale (id-ID) for all dates and numbers.",
+    "multi_driver_input": "Dynamic field array allowing 'Add Driver' within the order form. Must calculate 'total gaji driver' dynamically.",
+    "export_excel": "Every dashboard widget containing a table must have a prominent 'Export Excel' button (ghost or outline variant) in the top right corner of its card.",
+    "filters": "Global Date Range Picker and Search input at the top right of the Executive Summary dashboard. Local filters (Month/Year) inside specific cards (e.g., Driver Performance)."
+  },
+  "icons_and_assets": {
+    "icon_library": "lucide-react (Standard for SaaS). Phosphor Icons recommended for dashboard density if installed.",
+    "image_urls": {
+      "login_background": {
+        "url": "https://images.unsplash.com/photo-1518043610038-064362b44076?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTB8MHwxfHNlYXJjaHwxfHxtb3VudCUyMGJyb21vJTIwamF2YSUyMGxhbmRzY2FwZSUyMHN1bnJpc2V8ZW58MHx8fHwxNzg1NDA3MDQ2fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Mount Bromo Java Landscape - Aerial Photography of Volcano. Used for Login page background image with a dark overlay (bg-black/50) so Google Login card stands out."
+      }
+    }
+  },
+  "testing": {
+    "attributes": "ALL interactive elements, form inputs, navigation links, and KPI displays MUST include a 'data-testid' attribute (e.g., data-testid='input-driver-name', data-testid='kpi-total-omset')."
+  },
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "You are building for a React + Tailwind + Shadcn UI stack using JavaScript (.js/.jsx), NOT TypeScript (.tsx). Convert component patterns to JS.",
+    "Do NOT use HTML-based components for advanced user interactions. Use Shadcn UI (Dropdowns, Calendar, Select).",
+    "Use 'sonner' for toast notifications.",
+    "Do not center align the app container in CSS. Keep standard document flow.",
+    "Ensure layering creates depth with z-index hierarchy but prefer solid or blurred backgrounds over transparent.",
+    "Include hover states and micro-animations for all buttons and interactive rows.",
+    "NEVER use generic placeholder text or dummy image URLs. If an image is needed and not provided, use an SVG pattern or CSS gradient.",
+    "Remember to apply 'data-testid' everywhere.",
+    "Dashboard Looker Studio clone rules: Maximize data visibility. Use white cards on a light gray background. Do not add heavy drop shadows; use 1px borders. Use clear visual hierarchy for KPIs."
+  ]
+}
