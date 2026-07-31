@@ -335,6 +335,8 @@ async def list_orders(user=Depends(get_current_user), search: Optional[str] = No
 @api_router.post("/orders")
 async def create_order(body: OrderCreate, user=Depends(require_roles("owner", "admin", "operator"))):
     o = body.model_dump()
+    if len(o.get("drivers", [])) > 4:
+        raise HTTPException(status_code=400, detail="Maksimal 4 driver dalam satu order")
     total_gaji = sum(float(d.get("gaji") or 0) for d in o.get("drivers", []))
     if total_gaji > float(o.get("harga") or 0):
         raise HTTPException(status_code=400, detail="Total gaji driver tidak boleh melebihi harga sewa")
@@ -362,6 +364,8 @@ async def update_order(id: str, body: OrderCreate, user=Depends(require_roles("o
     if not existing:
         raise HTTPException(status_code=404, detail="Order tidak ditemukan")
     o = body.model_dump()
+    if len(o.get("drivers", [])) > 4:
+        raise HTTPException(status_code=400, detail="Maksimal 4 driver dalam satu order")
     total_gaji = sum(float(d.get("gaji") or 0) for d in o.get("drivers", []))
     if total_gaji > float(o.get("harga") or 0):
         raise HTTPException(status_code=400, detail="Total gaji driver tidak boleh melebihi harga sewa")
