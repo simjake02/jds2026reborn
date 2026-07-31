@@ -7,6 +7,7 @@ import os
 import io
 import logging
 import uuid
+import bcrypt
 import requests
 from pathlib import Path
 from pydantic import BaseModel, Field
@@ -117,7 +118,7 @@ async def get_current_user(request: Request):
         expires_at = expires_at.replace(tzinfo=timezone.utc)
     if expires_at < now_utc():
         raise HTTPException(status_code=401, detail="Session expired")
-    user = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0})
+    user = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0, "password_hash": 0})
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
     if not user.get("active", True):
@@ -194,9 +195,85 @@ async def auth_logout(request: Request, response: Response):
     return {"ok": True}
 
 
+def hash_password(p: str) -> str:
+    return bcrypt.hashpw(p.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def verify_password(p: str, h: str) -> bool:
+    try:
+        return bcrypt.checkpw(p.encode("utf-8"), h.encode("utf-8"))
+    except Exception:
+        return False
+
+
+class LoginBody(BaseModel):
+    email: str
+    password: str
+
+
+@api_router.post("/auth/login")
+async def auth_login(body: LoginBody, request: Request, response: Response):
+    email = body.email.strip().lower()
+    ip = request.client.host if request.client else "?"
+    ident = f"{ip}:{email}"
+    att = await db.login_attempts.find_one({"identifier": ident})
+    if att and att.get("count", 0) >= 5 and att.get("locked_until"):
+        lu = att["locked_until"]
+        lu = datetime.fromisoformat(lu) if isinstance(lu, str) else lu
+        if lu.tzinfo is None:
+            lu = lu.replace(tzinfo=timezone.utc)
+        if lu > now_utc():
+            raise HTTPException(status_code=429, detail="Terlalu banyak percobaan. Coba lagi dalam 15 menit.")
+    user = await db.users.find_one({"email": email})
+    if not user or not user.get("password_hash") or not verify_password(body.password, user["password_hash"]):
+        cnt = (att.get("count", 0) + 1) if att else 1
+        upd = {"identifier": ident, "count": cnt}
+        if cnt >= 5:
+            upd["locked_until"] = (now_utc() + timedelta(minutes=15)).isoformat()
+        await db.login_attempts.update_one({"identifier": ident}, {"$set": upd}, upsert=True)
+        raise HTTPException(status_code=401, detail="Email atau password salah")
+    if not user.get("active", True):
+        raise HTTPException(status_code=403, detail="Akun dinonaktifkan. Hubungi pemilik.")
+    await db.login_attempts.delete_one({"identifier": ident})
+    token = f"sess_{uuid.uuid4().hex}"
+    await db.user_sessions.insert_one({
+        "user_id": user["user_id"], "session_token": token,
+        "expires_at": (now_utc() + timedelta(days=7)).isoformat(), "created_at": now_utc().isoformat(),
+    })
+    response.set_cookie("session_token", token, httponly=True, secure=True, samesite="none", path="/", max_age=7 * 24 * 3600)
+    clean(user)
+    user.pop("password_hash", None)
+    return {"user": user}
+
+
 @api_router.get("/users")
 async def list_users(user=Depends(require_roles("owner"))):
-    return await db.users.find({}, {"_id": 0}).to_list(1000)
+    return await db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(1000)
+
+
+class CreateUserBody(BaseModel):
+    email: str
+    password: str
+    name: Optional[str] = ""
+    role: str = "operator"
+
+
+@api_router.post("/users")
+async def create_user_account(body: CreateUserBody, user=Depends(require_roles("owner"))):
+    email = body.email.strip().lower()
+    if body.role not in ("owner", "admin", "operator"):
+        raise HTTPException(status_code=400, detail="Peran tidak valid")
+    if len(body.password) < 6:
+        raise HTTPException(status_code=400, detail="Password minimal 6 karakter")
+    if await db.users.find_one({"email": email}):
+        raise HTTPException(status_code=400, detail="Email sudah terdaftar")
+    doc = {"user_id": f"user_{uuid.uuid4().hex[:12]}", "email": email,
+           "name": body.name or email.split("@")[0], "role": body.role, "active": True,
+           "password_hash": hash_password(body.password), "created_at": now_utc().isoformat()}
+    await db.users.insert_one(dict(doc))
+    doc.pop("password_hash", None)
+    clean(doc)
+    return doc
 
 
 @api_router.put("/users/{user_id}")
@@ -206,9 +283,15 @@ async def update_user(user_id: str, body: dict, user=Depends(require_roles("owne
         upd["role"] = body["role"]
     if "active" in body:
         upd["active"] = bool(body["active"])
+    if "name" in body and body["name"]:
+        upd["name"] = body["name"]
+    if body.get("password"):
+        if len(body["password"]) < 6:
+            raise HTTPException(status_code=400, detail="Password minimal 6 karakter")
+        upd["password_hash"] = hash_password(body["password"])
     if upd:
         await db.users.update_one({"user_id": user_id}, {"$set": upd})
-    return await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    return await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
 
 
 @api_router.get("/clients")
@@ -572,3 +655,34 @@ app.add_middleware(
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
+
+@app.on_event("startup")
+async def seed_accounts():
+    try:
+        await db.users.create_index("email", unique=True)
+    except Exception as e:
+        logger.warning(f"email index: {e}")
+    pwd = os.environ.get("DEFAULT_PASSWORD", "Jds@2025")
+    owner_email = os.environ.get("OWNER_EMAIL", "adityapermanarh62@gmail.com").strip().lower()
+    defaults = [
+        (owner_email, "owner", "Pemilik"),
+        ("admin@jds.com", "admin", "Admin Operasional"),
+        ("operator@jds.com", "operator", "Operator"),
+    ]
+    for email, role, name in defaults:
+        existing = await db.users.find_one({"email": email})
+        if not existing:
+            await db.users.insert_one({
+                "user_id": f"user_{uuid.uuid4().hex[:12]}", "email": email, "name": name,
+                "role": role, "active": True, "password_hash": hash_password(pwd),
+                "created_at": now_utc().isoformat(),
+            })
+        else:
+            setd = {}
+            if role == "owner" and existing.get("role") != "owner":
+                setd["role"] = "owner"
+            if not existing.get("password_hash"):
+                setd["password_hash"] = hash_password(pwd)
+            if setd:
+                await db.users.update_one({"email": email}, {"$set": setd})
