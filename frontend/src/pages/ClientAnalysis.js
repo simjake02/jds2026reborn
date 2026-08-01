@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { api, fmtRp, fmtNum, downloadFile } from "@/lib/api";
-import { PageHeader, SectionCard } from "@/components/Shared";
+import { PageHeader, SectionCard, LabeledField } from "@/components/Shared";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -47,17 +47,23 @@ export default function ClientAnalysis() {
   return (
     <div>
       <PageHeader title="Analisis Klien" subtitle="Kontribusi berdasarkan tipe klien (Agen, Kedinasan, Perorangan)">
-        <Select value={tipe} onValueChange={setTipe}>
-          <SelectTrigger className="w-40" data-testid="filter-tipe"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Semua Tipe</SelectItem>
-            <SelectItem value="A">Agen</SelectItem>
-            <SelectItem value="D">Kedinasan</SelectItem>
-            <SelectItem value="P">Perorangan</SelectItem>
-          </SelectContent>
-        </Select>
-        <Input type="date" value={start} onChange={(e) => setStart(e.target.value)} className="w-40" />
-        <Input type="date" value={end} onChange={(e) => setEnd(e.target.value)} className="w-40" />
+        <LabeledField label="Tipe Klien">
+          <Select value={tipe} onValueChange={setTipe}>
+            <SelectTrigger className="w-40" data-testid="filter-tipe"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Tipe</SelectItem>
+              <SelectItem value="A">Agen</SelectItem>
+              <SelectItem value="D">Kedinasan</SelectItem>
+              <SelectItem value="P">Perorangan</SelectItem>
+            </SelectContent>
+          </Select>
+        </LabeledField>
+        <LabeledField label="Tanggal Mulai">
+          <Input type="date" value={start} onChange={(e) => setStart(e.target.value)} className="w-40" />
+        </LabeledField>
+        <LabeledField label="Tanggal Selesai">
+          <Input type="date" value={end} onChange={(e) => setEnd(e.target.value)} className="w-40" />
+        </LabeledField>
         <Button variant="outline" onClick={() => downloadFile(`/export/clients-analysis?tipe=${tipe === "all" ? "" : tipe}&start=${start}&end=${end}`, "analisis_klien.xlsx").then(() => toast.success("Excel diunduh"))} data-testid="export-clients-btn">
           <Download className="mr-2 h-4 w-4" /> Excel
         </Button>

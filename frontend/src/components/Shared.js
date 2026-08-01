@@ -32,6 +32,15 @@ export function KpiCard({ label, value, icon: Icon, accent = "emerald", testid }
   );
 }
 
+export function LabeledField({ label, children }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{label}</span>
+      {children}
+    </div>
+  );
+}
+
 export function SectionCard({ title, action, children, className = "" }) {
   return (
     <Card className={`border-slate-200 shadow-sm ${className}`}>

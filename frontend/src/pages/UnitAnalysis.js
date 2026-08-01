@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback } from "react";
 import { api, fmtRp, fmtNum, monthLabel, downloadFile } from "@/lib/api";
-import { PageHeader, SectionCard } from "@/components/Shared";
+import { PageHeader, SectionCard, LabeledField } from "@/components/Shared";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Download } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
@@ -12,16 +13,23 @@ const BAR_COLORS = ["hsl(152,69%,31%)","hsl(217,91%,60%)","hsl(35,92%,53%)","hsl
 
 export default function UnitAnalysis() {
   const [data, setData] = useState({ summary: [], freq: [], units: [] });
+  const [allUnits, setAllUnits] = useState([]);
+  const [unit, setUnit] = useState("all");
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
+
+  useEffect(() => {
+    api.get("/units").then((res) => setAllUnits(res.data.map((u) => u.nama)));
+  }, []);
 
   const load = useCallback(async () => {
     const params = {};
     if (start) params.start = start;
     if (end) params.end = end;
+    if (unit !== "all") params.unit = unit;
     const res = await api.get("/analytics/units", { params });
     setData(res.data);
-  }, [start, end]);
+  }, [start, end, unit]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -31,9 +39,22 @@ export default function UnitAnalysis() {
   return (
     <div>
       <PageHeader title="Analisis Operasional Unit" subtitle="Frekuensi & performa unit kendaraan">
-        <Input type="date" value={start} onChange={(e) => setStart(e.target.value)} className="w-40" />
-        <Input type="date" value={end} onChange={(e) => setEnd(e.target.value)} className="w-40" />
-        <Button variant="outline" onClick={() => downloadFile(`/export/units-analysis?start=${start}&end=${end}`, "analisis_unit.xlsx").then(() => toast.success("Excel diunduh"))} data-testid="export-units-btn">
+        <LabeledField label="Tanggal Mulai">
+          <Input type="date" value={start} onChange={(e) => setStart(e.target.value)} className="w-40" data-testid="filter-start" />
+        </LabeledField>
+        <LabeledField label="Pilih Unit">
+          <Select value={unit} onValueChange={setUnit}>
+            <SelectTrigger className="w-52" data-testid="filter-unit"><SelectValue /></SelectTrigger>
+            <SelectContent className="max-h-64">
+              <SelectItem value="all">Semua Unit</SelectItem>
+              {allUnits.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </LabeledField>
+        <LabeledField label="Tanggal Selesai">
+          <Input type="date" value={end} onChange={(e) => setEnd(e.target.value)} className="w-40" data-testid="filter-end" />
+        </LabeledField>
+        <Button variant="outline" onClick={() => downloadFile(`/export/units-analysis?start=${start}&end=${end}&unit=${unit === "all" ? "" : encodeURIComponent(unit)}`, "analisis_unit.xlsx").then(() => toast.success("Excel diunduh"))} data-testid="export-units-btn">
           <Download className="mr-2 h-4 w-4" /> Excel
         </Button>
       </PageHeader>

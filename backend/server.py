@@ -267,7 +267,7 @@ async def auth_reset_password(body: ResetPasswordBody):
 
 
 @api_router.get("/users")
-async def list_users(user=Depends(require_roles("owner"))):
+async def list_users(user=Depends(require_roles("owner", "admin", "operator"))):
     return await db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(1000)
 
 
@@ -279,7 +279,7 @@ class CreateUserBody(BaseModel):
 
 
 @api_router.post("/users")
-async def create_user_account(body: CreateUserBody, user=Depends(require_roles("owner"))):
+async def create_user_account(body: CreateUserBody, user=Depends(require_roles("owner", "operator"))):
     email = body.email.strip().lower()
     if body.role not in ("owner", "admin", "operator"):
         raise HTTPException(status_code=400, detail="Peran tidak valid")
@@ -297,7 +297,10 @@ async def create_user_account(body: CreateUserBody, user=Depends(require_roles("
 
 
 @api_router.put("/users/{user_id}")
-async def update_user(user_id: str, body: dict, user=Depends(require_roles("owner"))):
+async def update_user(user_id: str, body: dict, user=Depends(require_roles("owner", "operator"))):
+    target = await db.users.find_one({"user_id": user_id})
+    if not target:
+        raise HTTPException(status_code=404, detail="Pengguna tidak ditemukan")
     upd = {}
     if "role" in body and body["role"] in ("owner", "admin", "operator"):
         upd["role"] = body["role"]
@@ -305,6 +308,12 @@ async def update_user(user_id: str, body: dict, user=Depends(require_roles("owne
         upd["active"] = bool(body["active"])
     if "name" in body and body["name"]:
         upd["name"] = body["name"]
+    if "email" in body and body["email"]:
+        new_email = body["email"].strip().lower()
+        if new_email != target.get("email"):
+            if await db.users.find_one({"email": new_email, "user_id": {"$ne": user_id}}):
+                raise HTTPException(status_code=400, detail="Email sudah terdaftar")
+            upd["email"] = new_email
     if body.get("password"):
         if len(body["password"]) < 6:
             raise HTTPException(status_code=400, detail="Password minimal 6 karakter")
@@ -312,6 +321,22 @@ async def update_user(user_id: str, body: dict, user=Depends(require_roles("owne
     if upd:
         await db.users.update_one({"user_id": user_id}, {"$set": upd})
     return await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
+
+
+@api_router.delete("/users/{user_id}")
+async def delete_user(user_id: str, user=Depends(require_roles("owner", "operator"))):
+    if user_id == user["user_id"]:
+        raise HTTPException(status_code=400, detail="Tidak dapat menghapus akun sendiri")
+    target = await db.users.find_one({"user_id": user_id})
+    if not target:
+        raise HTTPException(status_code=404, detail="Pengguna tidak ditemukan")
+    if target.get("role") == "owner":
+        owners = await db.users.count_documents({"role": "owner"})
+        if owners <= 1:
+            raise HTTPException(status_code=400, detail="Tidak dapat menghapus satu-satunya Pemilik")
+    await db.users.delete_one({"user_id": user_id})
+    await db.user_sessions.delete_many({"user_id": user_id})
+    return {"ok": True}
 
 
 @api_router.get("/clients")
@@ -548,8 +573,11 @@ async def analytics_clients(user=Depends(get_current_user), start: Optional[str]
 
 
 @api_router.get("/analytics/units")
-async def analytics_units(user=Depends(get_current_user), start: Optional[str] = None, end: Optional[str] = None):
+async def analytics_units(user=Depends(get_current_user), start: Optional[str] = None,
+                          end: Optional[str] = None, unit: Optional[str] = None):
     orders = await fetch_orders(start, end)
+    if unit:
+        orders = [o for o in orders if (o.get("unit_nama") or "-") == unit]
     by_unit = defaultdict(lambda: {"order": 0, "omset": 0, "margin": 0})
     monthly = defaultdict(lambda: defaultdict(int))
     for o in orders:
@@ -647,8 +675,9 @@ async def export_clients(user=Depends(get_current_user), start: Optional[str] = 
 
 
 @api_router.get("/export/units-analysis")
-async def export_units(user=Depends(get_current_user), start: Optional[str] = None, end: Optional[str] = None):
-    data = await analytics_units(user, start, end)
+async def export_units(user=Depends(get_current_user), start: Optional[str] = None,
+                       end: Optional[str] = None, unit: Optional[str] = None):
+    data = await analytics_units(user, start, end, unit)
     headers = ["Unit", "Jumlah Order", "Total Omset", "Rata-rata Omset", "Margin"]
     rows = [[u["unit"], u["order"], u["omset"], round(u["rata_omset"]), u["margin"]] for u in data["summary"]]
     return xlsx_response(make_xlsx("Analisis Unit", headers, rows), "analisis_unit.xlsx")

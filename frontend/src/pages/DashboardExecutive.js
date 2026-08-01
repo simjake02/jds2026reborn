@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { api, fmtRp, fmtNum, fmtDate, monthLabel, downloadFile } from "@/lib/api";
-import { PageHeader, KpiCard, SectionCard } from "@/components/Shared";
+import { PageHeader, KpiCard, SectionCard, LabeledField } from "@/components/Shared";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -40,8 +40,12 @@ export default function DashboardExecutive() {
   return (
     <div>
       <PageHeader title="Ringkasan Eksekutif" subtitle="Kinerja operasional PT. Jawa Dwipa Solutions">
-        <Input type="date" value={start} onChange={(e) => setStart(e.target.value)} className="w-40" data-testid="filter-start" />
-        <Input type="date" value={end} onChange={(e) => setEnd(e.target.value)} className="w-40" data-testid="filter-end" />
+        <LabeledField label="Tanggal Mulai">
+          <Input type="date" value={start} onChange={(e) => setStart(e.target.value)} className="w-40" data-testid="filter-start" />
+        </LabeledField>
+        <LabeledField label="Tanggal Selesai">
+          <Input type="date" value={end} onChange={(e) => setEnd(e.target.value)} className="w-40" data-testid="filter-end" />
+        </LabeledField>
         <Button variant="outline" onClick={() => downloadFile(`/export/orders?search=${search}&start=${start}&end=${end}`, "transaksi.xlsx").then(() => toast.success("Excel diunduh"))} data-testid="export-orders-btn">
           <Download className="mr-2 h-4 w-4" /> Excel
         </Button>

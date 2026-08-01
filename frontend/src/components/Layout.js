@@ -16,7 +16,7 @@ const nav = [
   { to: "/analisis-driver", label: "Performa Driver", icon: TrendingUp, roles: ["owner", "admin", "operator"] },
   { to: "/transaksi", label: "Transaksi Order", icon: ClipboardList, roles: ["owner", "admin", "operator"] },
   { to: "/master", label: "Data Master", icon: Database, roles: ["owner", "admin", "operator"] },
-  { to: "/pengguna", label: "Manajemen Pengguna", icon: UserCog, roles: ["owner"] },
+  { to: "/pengguna", label: "Manajemen Pengguna", icon: UserCog, roles: ["owner", "admin", "operator"] },
 ];
 
 export default function Layout({ children }) {
