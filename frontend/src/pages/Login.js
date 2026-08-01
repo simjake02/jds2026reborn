@@ -5,7 +5,9 @@ import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Car, ShieldCheck, Loader2, Mail } from "lucide-react";
+import { toast } from "sonner";
 
 function formatApiErrorDetail(detail) {
   if (detail == null) return "Terjadi kesalahan. Coba lagi.";
@@ -24,6 +26,13 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [fpEmail, setFpEmail] = useState("");
+  const [fpPass, setFpPass] = useState("");
+  const [fpConfirm, setFpConfirm] = useState("");
+  const [fpLoading, setFpLoading] = useState(false);
+  const [fpError, setFpError] = useState("");
+
   const handleGoogle = () => {
     const redirectUrl = window.location.origin + "/dashboard";
     window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
@@ -41,6 +50,24 @@ export default function Login() {
       setError(formatApiErrorDetail(err.response?.data?.detail) || "Gagal masuk");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleReset = async () => {
+    setFpError("");
+    if (fpPass.length < 6) { setFpError("Password minimal 6 karakter"); return; }
+    if (fpPass !== fpConfirm) { setFpError("Konfirmasi password tidak cocok"); return; }
+    setFpLoading(true);
+    try {
+      await api.post("/auth/reset-password", { email: fpEmail.trim(), new_password: fpPass });
+      toast.success("Password berhasil diperbarui. Silakan masuk.");
+      setForgotOpen(false);
+      setEmail(fpEmail.trim());
+      setFpEmail(""); setFpPass(""); setFpConfirm("");
+    } catch (err) {
+      setFpError(formatApiErrorDetail(err.response?.data?.detail) || "Gagal mengubah password");
+    } finally {
+      setFpLoading(false);
     }
   };
 
@@ -70,7 +97,13 @@ export default function Login() {
                 placeholder="nama@perusahaan.com" required data-testid="login-email" />
             </div>
             <div>
-              <Label htmlFor="password">Password</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password">Password</Label>
+                <button type="button" onClick={() => { setFpEmail(email); setForgotOpen(true); }}
+                  className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 hover:underline" data-testid="forgot-password-link">
+                  Lupa password?
+                </button>
+              </div>
               <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••" required data-testid="login-password" />
             </div>
@@ -99,6 +132,27 @@ export default function Login() {
         </div>
         <p className="mt-4 text-center text-xs text-white/70">PT. Jawa Dwipa Solutions · Surabaya</p>
       </div>
+
+      <Dialog open={forgotOpen} onOpenChange={setForgotOpen}>
+        <DialogContent data-testid="forgot-password-dialog">
+          <DialogHeader>
+            <DialogTitle>Atur Ulang Password</DialogTitle>
+            <DialogDescription>Masukkan email akun Anda dan password baru. Perubahan langsung berlaku.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div><Label>Email</Label><Input type="email" value={fpEmail} onChange={(e) => setFpEmail(e.target.value)} placeholder="nama@perusahaan.com" data-testid="fp-email" /></div>
+            <div><Label>Password Baru (min. 6 karakter)</Label><Input type="password" value={fpPass} onChange={(e) => setFpPass(e.target.value)} data-testid="fp-password" /></div>
+            <div><Label>Konfirmasi Password Baru</Label><Input type="password" value={fpConfirm} onChange={(e) => setFpConfirm(e.target.value)} data-testid="fp-confirm" /></div>
+            {fpError && <p className="text-sm text-red-600" data-testid="fp-error">{fpError}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setForgotOpen(false)}>Batal</Button>
+            <Button onClick={handleReset} disabled={fpLoading} className="bg-emerald-600 hover:bg-emerald-700" data-testid="fp-submit-btn">
+              {fpLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Simpan Password
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

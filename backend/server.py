@@ -246,6 +246,26 @@ async def auth_login(body: LoginBody, request: Request, response: Response):
     return {"user": user}
 
 
+class ResetPasswordBody(BaseModel):
+    email: str
+    new_password: str
+
+
+@api_router.post("/auth/reset-password")
+async def auth_reset_password(body: ResetPasswordBody):
+    email = body.email.strip().lower()
+    if len(body.new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password minimal 6 karakter")
+    user = await db.users.find_one({"email": email})
+    if not user:
+        raise HTTPException(status_code=404, detail="Email tidak terdaftar")
+    if not user.get("active", True):
+        raise HTTPException(status_code=403, detail="Akun dinonaktifkan. Hubungi pemilik.")
+    await db.users.update_one({"email": email}, {"$set": {"password_hash": hash_password(body.new_password)}})
+    await db.login_attempts.delete_many({"identifier": {"$regex": f":{email}$"}})
+    return {"ok": True, "message": "Password berhasil diperbarui. Silakan masuk."}
+
+
 @api_router.get("/users")
 async def list_users(user=Depends(require_roles("owner"))):
     return await db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(1000)
