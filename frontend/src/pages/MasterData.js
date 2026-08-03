@@ -1,13 +1,14 @@
 import { useEffect, useState, useCallback } from "react";
-import { api, fmtDate } from "@/lib/api";
+import { api } from "@/lib/api";
 import { PageHeader, SectionCard } from "@/components/Shared";
+import { FormDialog } from "@/components/FormDialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Pencil, Trash2, Search } from "lucide-react";
@@ -65,7 +66,16 @@ export default function MasterData() {
 
   const filt = (arr, q, keys) => arr.filter((r) => keys.some((k) => (r[k] || "").toString().toLowerCase().includes(q.toLowerCase())));
 
-  const openDialog = (kind, data) => setDialog({ kind, data: data || (kind === "clients" ? { penyewa_id: "", nama: "" } : kind === "units" ? { unit_id: "", nama: "" } : { nama: "", telepon: "", alamat: "", tanggal_bergabung: "", aktif: true }) });
+  const openDialog = async (kind, data) => {
+    if (data) { setDialog({ kind, data }); return; }
+    if (kind === "clients") setDialog({ kind, data: { penyewa_id: "", nama: "" } });
+    else if (kind === "units") setDialog({ kind, data: { unit_id: "", nama: "" } });
+    else {
+      let driver_id = "";
+      try { driver_id = (await api.get("/drivers/next-code")).data.driver_id; } catch {}
+      setDialog({ kind, data: { driver_id, nama: "", telepon: "", aktif: true } });
+    }
+  };
   const setField = (k, v) => setDialog((d) => ({ ...d, data: { ...d.data, [k]: v } }));
 
   const save = async () => {
@@ -78,6 +88,8 @@ export default function MasterData() {
     } catch (e) { toast.error(e.response?.data?.detail || "Gagal menyimpan"); }
   };
   const doDelete = async () => { await api.delete(`/${del.kind}/${del.id}`); setDel(null); toast.success("Data dihapus"); load(); };
+
+  const kindLabel = dialog?.kind === "clients" ? "Penyewa" : dialog?.kind === "units" ? "Unit" : "Driver";
 
   return (
     <div>
@@ -102,40 +114,38 @@ export default function MasterData() {
             renderCell={(r) => (<><TableCell className="font-medium">{r.unit_id}</TableCell><TableCell>{r.nama}</TableCell></>)} />
         </TabsContent>
         <TabsContent value="drivers">
-          <CrudTable kind="drivers" columns={["Nama", "Telepon", "Alamat", "Bergabung", "Status"]} rows={filt(drivers, sd, ["nama", "telepon"])}
+          <CrudTable kind="drivers" columns={["ID Driver", "Nama", "Telepon", "Status"]} rows={filt(drivers, sd, ["driver_id", "nama", "telepon"])}
             search={sd} setSearch={setSd} canDelete={canDelete}
             onAdd={() => openDialog("drivers")} onEdit={(r) => openDialog("drivers", r)} onDelete={(id) => setDel({ kind: "drivers", id })}
-            renderCell={(r) => (<><TableCell className="font-medium">{r.nama}</TableCell><TableCell>{r.telepon || "-"}</TableCell><TableCell className="max-w-[180px] truncate">{r.alamat || "-"}</TableCell><TableCell>{r.tanggal_bergabung ? fmtDate(r.tanggal_bergabung) : "-"}</TableCell><TableCell><Badge className={r.aktif ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}>{r.aktif ? "Aktif" : "Nonaktif"}</Badge></TableCell></>)} />
+            renderCell={(r) => (<><TableCell className="font-medium">{r.driver_id || "-"}</TableCell><TableCell>{r.nama}</TableCell><TableCell>{r.telepon || "-"}</TableCell><TableCell><Badge className={r.aktif ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}>{r.aktif ? "Aktif" : "Nonaktif"}</Badge></TableCell></>)} />
         </TabsContent>
       </Tabs>
 
-      <Dialog open={!!dialog} onOpenChange={(o) => !o && setDialog(null)}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>{dialog?.data?.id ? "Edit" : "Tambah"} {dialog?.kind === "clients" ? "Penyewa" : dialog?.kind === "units" ? "Unit" : "Driver"}</DialogTitle></DialogHeader>
-          {dialog?.kind === "clients" && (
+      {dialog && (
+        <FormDialog open={!!dialog} onClose={() => setDialog(null)} title={`${dialog?.data?.id ? "Edit" : "Tambah"} ${kindLabel}`} testid="master-dialog">
+          {dialog.kind === "clients" && (
             <div className="space-y-3">
               <div><Label>ID Penyewa (A/D/P + nomor)</Label><Input value={dialog.data.penyewa_id} onChange={(e) => setField("penyewa_id", e.target.value)} placeholder="A0001 / D0001 / P0001" data-testid="input-penyewa-id" /><p className="mt-1 text-xs text-slate-400">A=Agen, D=Kedinasan, P=Perorangan</p></div>
               <div><Label>Nama</Label><Input value={dialog.data.nama} onChange={(e) => setField("nama", e.target.value)} data-testid="input-penyewa-nama" /></div>
             </div>
           )}
-          {dialog?.kind === "units" && (
+          {dialog.kind === "units" && (
             <div className="space-y-3">
               <div><Label>ID Unit</Label><Input value={dialog.data.unit_id} onChange={(e) => setField("unit_id", e.target.value)} placeholder="U0001" data-testid="input-unit-id" /></div>
               <div><Label>Nama Unit</Label><Input value={dialog.data.nama} onChange={(e) => setField("nama", e.target.value)} data-testid="input-unit-nama" /></div>
             </div>
           )}
-          {dialog?.kind === "drivers" && (
+          {dialog.kind === "drivers" && (
             <div className="space-y-3">
+              <div><Label>ID Driver</Label><Input value={dialog.data.driver_id || ""} onChange={(e) => setField("driver_id", e.target.value)} placeholder="DR001" data-testid="input-driver-id" /><p className="mt-1 text-xs text-slate-400">Otomatis dari sistem, bisa diubah manual.</p></div>
               <div><Label>Nama</Label><Input value={dialog.data.nama} onChange={(e) => setField("nama", e.target.value)} data-testid="input-driver-nama" /></div>
               <div><Label>Nomor Telepon</Label><Input value={dialog.data.telepon} onChange={(e) => setField("telepon", e.target.value)} data-testid="input-driver-telepon" /></div>
-              <div><Label>Alamat</Label><Input value={dialog.data.alamat} onChange={(e) => setField("alamat", e.target.value)} data-testid="input-driver-alamat" /></div>
-              <div><Label>Tanggal Bergabung</Label><Input type="date" value={dialog.data.tanggal_bergabung || ""} onChange={(e) => setField("tanggal_bergabung", e.target.value)} data-testid="input-driver-tgl" /></div>
               <div className="flex items-center gap-2"><Switch checked={dialog.data.aktif} onCheckedChange={(v) => setField("aktif", v)} data-testid="input-driver-aktif" /><Label>Aktif</Label></div>
             </div>
           )}
           <DialogFooter><Button variant="ghost" onClick={() => setDialog(null)}>Batal</Button><Button onClick={save} className="bg-emerald-600 hover:bg-emerald-700" data-testid="save-master-btn">Simpan</Button></DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </FormDialog>
+      )}
 
       <AlertDialog open={!!del} onOpenChange={(o) => !o && setDel(null)}>
         <AlertDialogContent>

@@ -21,8 +21,7 @@ Aplikasi web operasional internal untuk perusahaan jasa travel di Surabaya. Akse
 - 4 dashboard ala Looker Studio: Ringkasan Eksekutif, Analisis Klien, Analisis Unit, Performa Driver.
 - Export Excel di setiap laporan; search & filter di tiap halaman.
 
-## Implemented (2026-07-31)
-- ✅ Google OAuth + RBAC (owner/admin/operator) + halaman Manajemen Pengguna.
+## Implemented (2026-07-31)- ✅ Google OAuth + RBAC (owner/admin/operator) + halaman Manajemen Pengguna.
 - ✅ Import data contoh Excel (Agu–Okt 2025): 299 orders, 52 clients, 14 units, 55 drivers.
 - ✅ Transaksi: wizard 3-langkah, multi-driver dinamis (maks 4), auto margin, validasi gaji, edit/hapus.
 - ✅ Master data CRUD (3 tab) dengan tipe klien otomatis.
@@ -31,6 +30,7 @@ Aplikasi web operasional internal untuk perusahaan jasa travel di Surabaya. Akse
 - ✅ Tested: backend 26/26 pytest pass; semua flow frontend pass.
 
 ## Backlog / Next
+- P1: unique index on orders.id_order.
 - P1: Index MongoDB pada `tanggal_mulai`, unique `id_order`; pagination list endpoints.
 - P2: Kolom "sisa pembayaran"/status pembayaran; ekspor PDF; audit log per user.
 - P2: Self-host login background image; DialogDescription a11y.

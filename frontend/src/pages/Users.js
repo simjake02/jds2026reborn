@@ -1,13 +1,14 @@
 import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
 import { PageHeader, SectionCard } from "@/components/Shared";
+import { FormDialog } from "@/components/FormDialog";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { UserPlus, Pencil, Trash2 } from "lucide-react";
@@ -112,9 +113,8 @@ export default function UsersPage() {
         </Table>
       </SectionCard>
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Tambah Pengguna</DialogTitle></DialogHeader>
+      {createOpen && (
+        <FormDialog open={createOpen} onClose={() => setCreateOpen(false)} title="Tambah Pengguna" testid="create-user-dialog">
           <div className="space-y-3">
             <div><Label>Nama</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="new-user-name" /></div>
             <div><Label>Email</Label><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} data-testid="new-user-email" /></div>
@@ -131,23 +131,19 @@ export default function UsersPage() {
             </div>
           </div>
           <DialogFooter><Button variant="ghost" onClick={() => setCreateOpen(false)}>Batal</Button><Button onClick={createUser} className="bg-emerald-600 hover:bg-emerald-700" data-testid="save-user-btn">Simpan</Button></DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </FormDialog>
+      )}
 
-      <Dialog open={!!editUser} onOpenChange={(o) => !o && setEditUser(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Ubah Pengguna — {editUser?.name}</DialogTitle>
-            <DialogDescription>Ubah email dan/atau password. Kosongkan password bila tidak ingin menggantinya.</DialogDescription>
-          </DialogHeader>
+      {editUser && (
+        <FormDialog open={!!editUser} onClose={() => setEditUser(null)} title={`Ubah Pengguna — ${editUser?.name}`} description='Ubah email dan/atau password. Kosongkan password bila tidak ingin menggantinya.' testid="edit-user-dialog">
           <div className="space-y-3">
             <div><Label>Nama</Label><Input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} data-testid="edit-user-name" /></div>
             <div><Label>Email</Label><Input type="email" value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} data-testid="edit-user-email" /></div>
             <div><Label>Password Baru (opsional, min. 6 karakter)</Label><Input type="password" value={editForm.password} onChange={(e) => setEditForm({ ...editForm, password: e.target.value })} placeholder="••••••••" data-testid="edit-user-password" /></div>
           </div>
           <DialogFooter><Button variant="ghost" onClick={() => setEditUser(null)}>Batal</Button><Button onClick={saveEdit} className="bg-emerald-600 hover:bg-emerald-700" data-testid="save-edit-user-btn">Simpan</Button></DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </FormDialog>
+      )}
 
       <AlertDialog open={!!delUser} onOpenChange={(o) => !o && setDelUser(null)}>
         <AlertDialogContent>

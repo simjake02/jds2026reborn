@@ -61,6 +61,7 @@ class OrderDriverItem(BaseModel):
 
 
 class OrderCreate(BaseModel):
+    id_order: Optional[str] = None
     penyewa_id: Optional[str] = None
     penyewa_nama: str
     tamu: Optional[str] = ""
@@ -93,10 +94,9 @@ class UnitModel(BaseModel):
 
 class DriverModel(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    driver_id: Optional[str] = None
     nama: str
     telepon: Optional[str] = ""
-    alamat: Optional[str] = ""
-    tanggal_bergabung: Optional[str] = None
     aktif: bool = True
 
 
@@ -398,9 +398,26 @@ async def list_drivers(user=Depends(get_current_user)):
     return await db.drivers.find({}, {"_id": 0}).sort("nama", 1).to_list(5000)
 
 
+async def gen_driver_code():
+    drivers = await db.drivers.find({}, {"driver_id": 1}).to_list(10000)
+    maxn = 0
+    for d in drivers:
+        did = d.get("driver_id") or ""
+        if did.startswith("DR") and did[2:].isdigit():
+            maxn = max(maxn, int(did[2:]))
+    return f"DR{maxn + 1:03d}"
+
+
+@api_router.get("/drivers/next-code")
+async def drivers_next_code(user=Depends(get_current_user)):
+    return {"driver_id": await gen_driver_code()}
+
+
 @api_router.post("/drivers")
 async def create_driver(body: DriverModel, user=Depends(require_roles("owner", "admin", "operator"))):
     doc = body.model_dump()
+    if not doc.get("driver_id"):
+        doc["driver_id"] = await gen_driver_code()
     await db.drivers.insert_one(dict(doc))
     return clean(doc)
 
@@ -409,6 +426,8 @@ async def create_driver(body: DriverModel, user=Depends(require_roles("owner", "
 async def update_driver(id: str, body: DriverModel, user=Depends(require_roles("owner", "admin", "operator"))):
     doc = body.model_dump()
     doc["id"] = id
+    if not doc.get("driver_id"):
+        doc["driver_id"] = await gen_driver_code()
     await db.drivers.update_one({"id": id}, {"$set": doc})
     return clean(doc)
 
@@ -419,6 +438,14 @@ async def delete_driver(id: str, user=Depends(require_roles("owner", "admin"))):
     return {"ok": True}
 
 
+def is_lengkap(o: dict) -> bool:
+    basic = all([o.get("penyewa_nama"), o.get("tamu"), o.get("unit_nama"),
+                 o.get("tanggal_mulai"), o.get("tanggal_selesai"), o.get("rute")]) and float(o.get("harga") or 0) > 0
+    drivers = o.get("drivers") or []
+    drv_ok = len(drivers) > 0 and all((d.get("driver_nama") and float(d.get("gaji") or 0) > 0) for d in drivers)
+    return bool(basic and drv_ok)
+
+
 def compute_order(o: dict) -> dict:
     total_gaji = sum(float(d.get("gaji") or 0) for d in o.get("drivers", []))
     total_biaya = (float(o.get("biaya_sewa_rekanan") or 0) + total_gaji +
@@ -427,21 +454,32 @@ def compute_order(o: dict) -> dict:
     o["total_gaji_driver"] = total_gaji
     o["total_biaya"] = total_biaya
     o["margin"] = float(o.get("harga") or 0) - total_biaya
-    filled = o.get("biaya_sewa_rekanan") or o.get("biaya_bbm") or o.get("biaya_toll_parkir") or total_gaji
-    o["status"] = "lengkap" if filled else "draft"
+    o["status"] = "lengkap" if is_lengkap(o) else "belum_lengkap"
     return o
 
 
-async def gen_order_code(tanggal_mulai):
-    prefix = "2500"
+async def gen_order_code(tanggal_mulai=None):
+    dt = None
     if tanggal_mulai:
         try:
             dt = datetime.fromisoformat(tanggal_mulai)
-            prefix = dt.strftime("%y%m")
         except Exception:
-            pass
-    cnt = await db.orders.count_documents({}) + 1
-    return f"{prefix}{cnt:04d}"
+            dt = None
+    if dt is None:
+        dt = now_utc()
+    prefix = dt.strftime("%y%m")
+    existing = await db.orders.find({"id_order": {"$regex": f"^{prefix}"}}, {"id_order": 1}).to_list(20000)
+    maxseq = 0
+    for e in existing:
+        tail = (e.get("id_order") or "")[len(prefix):]
+        if tail.isdigit():
+            maxseq = max(maxseq, int(tail))
+    return f"{prefix}{maxseq + 1:05d}"
+
+
+@api_router.get("/orders/next-code")
+async def orders_next_code(user=Depends(get_current_user), tanggal: Optional[str] = None):
+    return {"id_order": await gen_order_code(tanggal)}
 
 
 @api_router.get("/orders")
@@ -469,7 +507,13 @@ async def create_order(body: OrderCreate, user=Depends(require_roles("owner", "a
     if total_gaji > float(o.get("harga") or 0):
         raise HTTPException(status_code=400, detail="Total gaji driver tidak boleh melebihi harga sewa")
     o["id"] = str(uuid.uuid4())
-    o["id_order"] = await gen_order_code(o.get("tanggal_mulai"))
+    provided = (o.get("id_order") or "").strip()
+    if provided:
+        if await db.orders.find_one({"id_order": provided}):
+            raise HTTPException(status_code=400, detail=f"ID Order {provided} sudah digunakan")
+        o["id_order"] = provided
+    else:
+        o["id_order"] = await gen_order_code(o.get("tanggal_mulai"))
     o["penyewa_tipe"] = client_tipe(o.get("penyewa_id") or "")
     compute_order(o)
     o["created_by"] = user["email"]
@@ -498,7 +542,13 @@ async def update_order(id: str, body: OrderCreate, user=Depends(require_roles("o
     if total_gaji > float(o.get("harga") or 0):
         raise HTTPException(status_code=400, detail="Total gaji driver tidak boleh melebihi harga sewa")
     o["id"] = id
-    o["id_order"] = existing.get("id_order")
+    provided = (o.get("id_order") or "").strip()
+    if provided and provided != existing.get("id_order"):
+        if await db.orders.find_one({"id_order": provided, "id": {"$ne": id}}):
+            raise HTTPException(status_code=400, detail=f"ID Order {provided} sudah digunakan")
+        o["id_order"] = provided
+    else:
+        o["id_order"] = existing.get("id_order")
     o["penyewa_tipe"] = client_tipe(o.get("penyewa_id") or "")
     compute_order(o)
     o["created_by"] = existing.get("created_by")
@@ -735,3 +785,34 @@ async def seed_accounts():
                 setd["password_hash"] = hash_password(pwd)
             if setd:
                 await db.users.update_one({"email": email}, {"$set": setd})
+
+
+@app.on_event("startup")
+async def migrate_driver_ids():
+    drivers = await db.drivers.find({}).to_list(20000)
+    maxn = 0
+    for d in drivers:
+        did = d.get("driver_id") or ""
+        if did.startswith("DR") and did[2:].isdigit():
+            maxn = max(maxn, int(did[2:]))
+    name_to_code = {}
+    for d in drivers:
+        if not d.get("driver_id"):
+            maxn += 1
+            code = f"DR{maxn:03d}"
+            await db.drivers.update_one({"id": d["id"]}, {"$set": {"driver_id": code}})
+            name_to_code[d.get("nama")] = code
+        else:
+            name_to_code[d.get("nama")] = d["driver_id"]
+    orders = await db.orders.find({}).to_list(50000)
+    for o in orders:
+        drvs = o.get("drivers") or []
+        for dr in drvs:
+            code = name_to_code.get(dr.get("driver_nama"))
+            if code:
+                dr["driver_id"] = code
+        o["drivers"] = drvs
+        compute_order(o)
+        await db.orders.update_one({"id": o["id"]}, {"$set": {"drivers": drvs, "status": o["status"],
+            "total_gaji_driver": o["total_gaji_driver"], "total_biaya": o["total_biaya"], "margin": o["margin"]}})
+    await db.drivers.update_many({}, {"$unset": {"alamat": "", "tanggal_bergabung": ""}})
