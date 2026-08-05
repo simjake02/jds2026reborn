@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { api, fmtRp, fmtNum, monthLabel, downloadFile } from "@/lib/api";
 import { PageHeader, SectionCard, LabeledField } from "@/components/Shared";
 import { Input } from "@/components/ui/input";
@@ -9,14 +9,18 @@ import { Download } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { toast } from "sonner";
 
-const BAR_COLORS = ["hsl(152,69%,31%)","hsl(217,91%,60%)","hsl(35,92%,53%)","hsl(280,65%,60%)","hsl(340,75%,55%)","hsl(190,80%,45%)"];
+const PALETTE = ["hsl(152,69%,40%)","hsl(217,91%,60%)","hsl(35,92%,53%)","hsl(280,65%,60%)","hsl(340,75%,55%)","hsl(190,80%,45%)","hsl(48,95%,53%)","hsl(120,45%,45%)","hsl(258,70%,62%)","hsl(12,80%,58%)","hsl(174,62%,40%)","hsl(300,60%,55%)"];
+const colorFor = (key, i) => (key === "Lainnya" ? "#94a3b8" : PALETTE[i % PALETTE.length]);
+
+const SORT_LABEL = { omset: "Omset Tertinggi", order: "Order Terbanyak", margin: "Margin Tertinggi" };
 
 export default function UnitAnalysis() {
-  const [data, setData] = useState({ summary: [], freq: [], units: [] });
+  const [data, setData] = useState({ summary: [], freq: [], units: [], freq_keys: [] });
   const [allUnits, setAllUnits] = useState([]);
   const [unit, setUnit] = useState("all");
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
+  const [sortBy, setSortBy] = useState("omset");
 
   useEffect(() => {
     api.get("/units").then((res) => setAllUnits(res.data.map((u) => u.nama)));
@@ -34,14 +38,12 @@ export default function UnitAnalysis() {
   useEffect(() => { load(); }, [load]);
 
   const freqData = data.freq.map((f) => ({ ...f, label: monthLabel(f.bulan) }));
-  const topUnits = data.units.slice(0, 6);
+  const freqKeys = data.freq_keys || [];
+  const sortedSummary = useMemo(() => [...data.summary].sort((a, b) => (b[sortBy] || 0) - (a[sortBy] || 0)), [data.summary, sortBy]);
 
   return (
     <div>
       <PageHeader title="Analisis Operasional Unit" subtitle="Frekuensi & performa unit kendaraan">
-        <LabeledField label="Tanggal Mulai">
-          <Input type="date" value={start} onChange={(e) => setStart(e.target.value)} className="w-40" data-testid="filter-start" />
-        </LabeledField>
         <LabeledField label="Pilih Unit">
           <Select value={unit} onValueChange={setUnit}>
             <SelectTrigger className="w-52" data-testid="filter-unit"><SelectValue /></SelectTrigger>
@@ -51,6 +53,9 @@ export default function UnitAnalysis() {
             </SelectContent>
           </Select>
         </LabeledField>
+        <LabeledField label="Tanggal Mulai">
+          <Input type="date" value={start} onChange={(e) => setStart(e.target.value)} className="w-40" data-testid="filter-start" />
+        </LabeledField>
         <LabeledField label="Tanggal Selesai">
           <Input type="date" value={end} onChange={(e) => setEnd(e.target.value)} className="w-40" data-testid="filter-end" />
         </LabeledField>
@@ -59,24 +64,36 @@ export default function UnitAnalysis() {
         </Button>
       </PageHeader>
 
-      <SectionCard title="Frekuensi Pemakaian Unit per Bulan" className="mb-6">
-        <ResponsiveContainer width="100%" height={320}>
-          <BarChart data={freqData}>
+      <SectionCard title="Frekuensi Pemakaian Unit per Bulan (Top 5 + Lainnya)" className="mb-6">
+        <ResponsiveContainer width="100%" height={340}>
+          <BarChart data={freqData} margin={{ bottom: 8 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
             <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} />
+            <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
             <Tooltip />
-            <Legend />
-            {topUnits.map((u, i) => <Bar key={u} dataKey={u} stackId="a" fill={BAR_COLORS[i % BAR_COLORS.length]} />)}
+            <Legend wrapperStyle={{ fontSize: 11 }} />
+            {freqKeys.map((k, i) => <Bar key={k} dataKey={k} stackId="a" fill={colorFor(k, i)} />)}
           </BarChart>
         </ResponsiveContainer>
       </SectionCard>
 
-      <SectionCard title="Ringkasan Unit">
+      <SectionCard title="Ringkasan Unit" action={
+        <LabeledField label="Urutkan berdasarkan">
+          <Select value={sortBy} onValueChange={setSortBy}>
+            <SelectTrigger className="w-52" data-testid="unit-sort"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="omset">{SORT_LABEL.omset}</SelectItem>
+              <SelectItem value="order">{SORT_LABEL.order}</SelectItem>
+              <SelectItem value="margin">{SORT_LABEL.margin}</SelectItem>
+            </SelectContent>
+          </Select>
+        </LabeledField>
+      }>
         <div className="max-h-[460px] overflow-auto">
           <Table>
             <TableHeader className="sticky top-0 bg-white">
               <TableRow>
+                <TableHead>#</TableHead>
                 <TableHead>Unit</TableHead>
                 <TableHead className="text-right">Jumlah Order</TableHead>
                 <TableHead className="text-right">Total Omset</TableHead>
@@ -85,8 +102,9 @@ export default function UnitAnalysis() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.summary.map((u, i) => (
+              {sortedSummary.map((u, i) => (
                 <TableRow key={u.unit} data-testid={`unit-row-${i}`}>
+                  <TableCell className="text-slate-400">{i + 1}</TableCell>
                   <TableCell className="font-medium">{u.unit}</TableCell>
                   <TableCell className="text-right">{fmtNum(u.order)}</TableCell>
                   <TableCell className="text-right font-medium">{fmtRp(u.omset)}</TableCell>

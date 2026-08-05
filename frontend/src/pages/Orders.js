@@ -18,7 +18,8 @@ import { useAuth } from "@/context/AuthContext";
 
 const tipeLabel = { A: "Agen", D: "Kedinasan", P: "Perorangan" };
 const tipeBadge = { A: "bg-blue-100 text-blue-700", D: "bg-amber-100 text-amber-700", P: "bg-purple-100 text-purple-700" };
-const empty = { id_order: "", penyewa_id: "", penyewa_nama: "", tamu: "", unit_id: "", unit_nama: "", tanggal_mulai: "", tanggal_selesai: "", rute: "", harga: "", biaya_sewa_rekanan: "", biaya_bbm: "", biaya_toll_parkir: "", biaya_lain: "", ket: "", drivers: [] };
+const empty = { id_order: "", penyewa_id: "", penyewa_nama: "", tamu: "", unit_id: "", unit_nama: "", tanggal_mulai: "", tanggal_selesai: "", rute: "", harga: "", biaya_sewa_rekanan: "", biaya_bbm: "", biaya_toll_parkir: "", biaya_lain: "", ket: "", status_bayar: "Belum Bayar", drivers: [] };
+const bayarBadge = { "Lunas": "bg-emerald-100 text-emerald-700", "DP": "bg-amber-100 text-amber-700", "Belum Bayar": "bg-red-100 text-red-700" };
 
 export default function Orders() {
   const { user } = useAuth();
@@ -28,6 +29,7 @@ export default function Orders() {
   const [units, setUnits] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(1);
   const [form, setForm] = useState(empty);
@@ -41,9 +43,9 @@ export default function Orders() {
     setClients(c.data); setUnits(u.data); setDrivers(d.data);
   }, []);
   const loadOrders = useCallback(async () => {
-    const res = await api.get("/orders", { params: { search } });
+    const res = await api.get("/orders", { params: { search, status: statusFilter === "all" ? undefined : statusFilter } });
     setOrders(res.data);
-  }, [search]);
+  }, [search, statusFilter]);
 
   useEffect(() => { loadMasters(); }, [loadMasters]);
   useEffect(() => { loadOrders(); }, [loadOrders]);
@@ -119,11 +121,17 @@ export default function Orders() {
   return (
     <div>
       <PageHeader title="Transaksi Order" subtitle="Input & kelola order perjalanan">
+        <div className="flex rounded-lg border border-slate-200 p-0.5" data-testid="status-filter">
+          {[["all", "Semua"], ["lengkap", "Lengkap"], ["belum_lengkap", "Belum Lengkap"]].map(([v, l]) => (
+            <button key={v} onClick={() => setStatusFilter(v)} data-testid={`status-filter-${v}`}
+              className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${statusFilter === v ? "bg-emerald-600 text-white" : "text-slate-500 hover:text-slate-800"}`}>{l}</button>
+          ))}
+        </div>
         <div className="relative">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
           <Input placeholder="Cari..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-48 pl-8" data-testid="search-orders" />
         </div>
-        <Button variant="outline" onClick={() => downloadFile(`/export/orders?search=${search}`, "transaksi.xlsx").then(() => toast.success("Excel diunduh"))} data-testid="export-btn">
+        <Button variant="outline" onClick={() => downloadFile(`/export/orders?search=${search}&status=${statusFilter === "all" ? "" : statusFilter}`, "transaksi.xlsx").then(() => toast.success("Excel diunduh"))} data-testid="export-btn">
           <Download className="mr-2 h-4 w-4" /> Excel
         </Button>
         <Button onClick={openCreate} className="bg-emerald-600 hover:bg-emerald-700" data-testid="add-order-btn">
@@ -139,7 +147,7 @@ export default function Orders() {
                 <TableHead>ID Order</TableHead><TableHead>Penyewa</TableHead><TableHead>Unit</TableHead>
                 <TableHead>Tgl Mulai</TableHead><TableHead>Driver</TableHead>
                 <TableHead className="text-right">Harga</TableHead><TableHead className="text-right">Margin</TableHead>
-                <TableHead>Status</TableHead><TableHead className="text-right">Aksi</TableHead>
+                <TableHead>Kelengkapan</TableHead><TableHead>Bayar</TableHead><TableHead className="text-right">Aksi</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -162,13 +170,18 @@ export default function Orders() {
                       {o.status === "lengkap" ? "Lengkap" : "Belum Lengkap"}
                     </Badge>
                   </TableCell>
+                  <TableCell>
+                    <Badge className={bayarBadge[o.status_bayar] || bayarBadge["Belum Bayar"]} data-testid={`bayar-${o.id_order}`}>
+                      {o.status_bayar || "Belum Bayar"}
+                    </Badge>
+                  </TableCell>
                   <TableCell className="text-right">
                     <Button variant="ghost" size="icon" onClick={() => openEdit(o)} data-testid={`edit-${o.id_order}`}><Pencil className="h-4 w-4" /></Button>
                     {canDelete && <Button variant="ghost" size="icon" onClick={() => setDelId(o.id)} data-testid={`delete-${o.id_order}`}><Trash2 className="h-4 w-4 text-red-600" /></Button>}
                   </TableCell>
                 </TableRow>
               ))}
-              {orders.length === 0 && <TableRow><TableCell colSpan={9} className="py-8 text-center text-slate-400">Belum ada transaksi</TableCell></TableRow>}
+              {orders.length === 0 && <TableRow><TableCell colSpan={10} className="py-8 text-center text-slate-400">Belum ada transaksi</TableCell></TableRow>}
             </TableBody>
           </Table>
         </div>
@@ -221,6 +234,16 @@ export default function Orders() {
             <div><Label>Biaya BBM</Label><CurrencyInput value={form.biaya_bbm} onChange={(v) => set("biaya_bbm", v)} data-testid="input-bbm" /></div>
             <div><Label>Biaya Tol / Parkir</Label><CurrencyInput value={form.biaya_toll_parkir} onChange={(v) => set("biaya_toll_parkir", v)} data-testid="input-toll" /></div>
             <div><Label>Biaya Lain-lain</Label><CurrencyInput value={form.biaya_lain} onChange={(v) => set("biaya_lain", v)} data-testid="input-lain" /></div>
+            <div><Label>Status Pembayaran</Label>
+              <Select value={form.status_bayar} onValueChange={(v) => set("status_bayar", v)}>
+                <SelectTrigger data-testid="select-status-bayar"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Belum Bayar">Belum Bayar</SelectItem>
+                  <SelectItem value="DP">DP</SelectItem>
+                  <SelectItem value="Lunas">Lunas</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="sm:col-span-2"><Label>Keterangan</Label><Textarea value={form.ket} onChange={(e) => set("ket", e.target.value)} data-testid="input-ket" /></div>
           </div>
         )}

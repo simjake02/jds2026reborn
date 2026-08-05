@@ -76,6 +76,7 @@ class OrderCreate(BaseModel):
     biaya_toll_parkir: float = 0
     biaya_lain: float = 0
     ket: Optional[str] = ""
+    status_bayar: Optional[str] = "Belum Bayar"
     drivers: List[OrderDriverItem] = []
 
 
@@ -484,7 +485,7 @@ async def orders_next_code(user=Depends(get_current_user), tanggal: Optional[str
 
 @api_router.get("/orders")
 async def list_orders(user=Depends(get_current_user), search: Optional[str] = None,
-                      start: Optional[str] = None, end: Optional[str] = None):
+                      start: Optional[str] = None, end: Optional[str] = None, status: Optional[str] = None):
     q = {}
     if search:
         q["$or"] = [{"penyewa_nama": {"$regex": search, "$options": "i"}},
@@ -495,6 +496,8 @@ async def list_orders(user=Depends(get_current_user), search: Optional[str] = No
         q.setdefault("tanggal_mulai", {})["$gte"] = start
     if end:
         q.setdefault("tanggal_mulai", {})["$lte"] = end
+    if status in ("lengkap", "belum_lengkap"):
+        q["status"] = status
     return await db.orders.find(q, {"_id": 0}).sort("tanggal_mulai", -1).to_list(5000)
 
 
@@ -641,8 +644,27 @@ async def analytics_units(user=Depends(get_current_user), start: Optional[str] =
         avg = v["omset"] / v["order"] if v["order"] else 0
         summary.append({"unit": k, **v, "rata_omset": avg})
     summary.sort(key=lambda x: x["omset"], reverse=True)
-    freq = [{"bulan": k, **v} for k, v in sorted(monthly.items()) if k != "N/A"]
-    return {"summary": summary, "freq": freq, "units": [s["unit"] for s in summary]}
+    LAINNYA = "Lainnya"
+    freq = []
+    key_totals = defaultdict(float)
+    has_lainnya = False
+    for k in sorted(monthly.keys()):
+        if k == "N/A":
+            continue
+        ranked = sorted(monthly[k].items(), key=lambda x: x[1], reverse=True)
+        row = {"bulan": k}
+        for name, c in ranked[:5]:
+            row[name] = c
+            key_totals[name] += c
+        rest = sum(c for _, c in ranked[5:])
+        if rest > 0:
+            row[LAINNYA] = rest
+            has_lainnya = True
+        freq.append(row)
+    freq_keys = [n for n, _ in sorted(key_totals.items(), key=lambda x: x[1], reverse=True)]
+    if has_lainnya:
+        freq_keys.append(LAINNYA)
+    return {"summary": summary, "freq": freq, "units": [s["unit"] for s in summary], "freq_keys": freq_keys}
 
 
 @api_router.get("/analytics/drivers")
@@ -699,11 +721,12 @@ def xlsx_response(buf, filename):
 
 @api_router.get("/export/orders")
 async def export_orders(user=Depends(get_current_user), search: Optional[str] = None,
-                        start: Optional[str] = None, end: Optional[str] = None):
-    orders = await list_orders(user, search, start, end)
+                        start: Optional[str] = None, end: Optional[str] = None, status: Optional[str] = None):
+    orders = await list_orders(user, search, start, end, status)
+    status_label = {"lengkap": "Lengkap", "belum_lengkap": "Belum Lengkap"}
     headers = ["ID Order", "Penyewa", "Tipe", "Tamu", "Unit", "Tgl Mulai", "Tgl Selesai", "Rute",
                "Harga", "Sewa Rekanan", "Gaji Driver", "BBM", "Tol/Parkir", "Lain-lain",
-               "Total Biaya", "Margin", "Driver", "Status"]
+               "Total Biaya", "Margin", "Driver", "Status Kelengkapan", "Status Pembayaran"]
     rows = []
     for o in orders:
         drv = "; ".join(f"{d.get('driver_nama')} ({d.get('segmen','')}) Rp{int(d.get('gaji') or 0)}" for d in o.get("drivers", []))
@@ -711,7 +734,8 @@ async def export_orders(user=Depends(get_current_user), search: Optional[str] = 
                      o.get("tamu"), o.get("unit_nama"), o.get("tanggal_mulai"), o.get("tanggal_selesai"),
                      o.get("rute"), o.get("harga"), o.get("biaya_sewa_rekanan"), o.get("total_gaji_driver"),
                      o.get("biaya_bbm"), o.get("biaya_toll_parkir"), o.get("biaya_lain"),
-                     o.get("total_biaya"), o.get("margin"), drv, o.get("status")])
+                     o.get("total_biaya"), o.get("margin"), drv,
+                     status_label.get(o.get("status"), o.get("status")), o.get("status_bayar") or "Belum Bayar"])
     return xlsx_response(make_xlsx("Transaksi", headers, rows), "transaksi.xlsx")
 
 
@@ -816,3 +840,4 @@ async def migrate_driver_ids():
         await db.orders.update_one({"id": o["id"]}, {"$set": {"drivers": drvs, "status": o["status"],
             "total_gaji_driver": o["total_gaji_driver"], "total_biaya": o["total_biaya"], "margin": o["margin"]}})
     await db.drivers.update_many({}, {"$unset": {"alamat": "", "tanggal_bergabung": ""}})
+    await db.orders.update_many({"status_bayar": {"$exists": False}}, {"$set": {"status_bayar": "Belum Bayar"}})
