@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { api, fmtRp, fmtNum, downloadFile } from "@/lib/api";
+import { usePersistedState } from "@/hooks/use-persisted-state";
 import { PageHeader, SectionCard, LabeledField, FilterBar } from "@/components/Shared";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -29,9 +30,9 @@ function Donut({ title, data, dataKey, fmt }) {
 
 export default function ClientAnalysis() {
   const [data, setData] = useState({ by_tipe: [], top_clients: [] });
-  const [tipe, setTipe] = useState("all");
-  const [start, setStart] = useState("");
-  const [end, setEnd] = useState("");
+  const [tipe, setTipe] = usePersistedState("client.tipe", "all");
+  const [start, setStart] = usePersistedState("flt.start", "");
+  const [end, setEnd] = usePersistedState("flt.end", "");
 
   const load = useCallback(async () => {
     const params = {};

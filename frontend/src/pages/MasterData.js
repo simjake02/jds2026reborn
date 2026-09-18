@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { DialogFooter } from "@/components/ui/dialog";
+import { DialogFooter, Dialog, DialogContent } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Pencil, Trash2, Search } from "lucide-react";
@@ -17,6 +17,29 @@ import { useAuth } from "@/context/AuthContext";
 
 const tipeLabel = { A: "Agen", D: "Kedinasan", P: "Perorangan" };
 const tipeBadge = { A: "bg-blue-100 text-blue-700", D: "bg-amber-100 text-amber-700", P: "bg-purple-100 text-purple-700" };
+
+// Compress & resize an image file to a small JPEG data URL (keeps DB docs light).
+function fileToCompressedDataUrl(file, maxDim = 1100, quality = 0.72) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        let { width, height } = img;
+        if (width >= height && width > maxDim) { height = Math.round((height * maxDim) / width); width = maxDim; }
+        else if (height > width && height > maxDim) { width = Math.round((width * maxDim) / height); height = maxDim; }
+        const canvas = document.createElement("canvas");
+        canvas.width = width; canvas.height = height;
+        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 function CrudTable({ kind, columns, rows, onAdd, onEdit, onDelete, canDelete, search, setSearch, renderCell }) {
   return (
@@ -57,6 +80,7 @@ export default function MasterData() {
   const [sc, setSc] = useState(""); const [su, setSu] = useState(""); const [sd, setSd] = useState("");
   const [dialog, setDialog] = useState(null); // {kind, data}
   const [del, setDel] = useState(null); // {kind, id}
+  const [simView, setSimView] = useState(null); // data url for lightbox
 
   const load = useCallback(async () => {
     const [c, u, d] = await Promise.all([api.get("/clients"), api.get("/units"), api.get("/drivers")]);
@@ -73,10 +97,21 @@ export default function MasterData() {
     else {
       let driver_id = "";
       try { driver_id = (await api.get("/drivers/next-code")).data.driver_id; } catch {}
-      setDialog({ kind, data: { driver_id, nama: "", telepon: "", aktif: true } });
+      setDialog({ kind, data: { driver_id, nama: "", telepon: "", aktif: true, foto_sim: null } });
     }
   };
   const setField = (k, v) => setDialog((d) => ({ ...d, data: { ...d.data, [k]: v } }));
+
+  const handleSimFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) { toast.error("Ukuran file maksimal 10MB"); e.target.value = ""; return; }
+    try {
+      const dataUrl = await fileToCompressedDataUrl(file);
+      setField("foto_sim", dataUrl);
+    } catch { toast.error("Gagal memproses gambar"); }
+    e.target.value = "";
+  };
 
   const save = async () => {
     const { kind, data } = dialog;
@@ -114,10 +149,10 @@ export default function MasterData() {
             renderCell={(r) => (<><TableCell className="font-medium">{r.unit_id}</TableCell><TableCell>{r.nama}</TableCell></>)} />
         </TabsContent>
         <TabsContent value="drivers">
-          <CrudTable kind="drivers" columns={["ID Driver", "Nama", "Telepon", "Status"]} rows={filt(drivers, sd, ["driver_id", "nama", "telepon"])}
+          <CrudTable kind="drivers" columns={["ID Driver", "Nama", "Telepon", "Status", "Foto SIM"]} rows={filt(drivers, sd, ["driver_id", "nama", "telepon"])}
             search={sd} setSearch={setSd} canDelete={canDelete}
             onAdd={() => openDialog("drivers")} onEdit={(r) => openDialog("drivers", r)} onDelete={(id) => setDel({ kind: "drivers", id })}
-            renderCell={(r) => (<><TableCell className="font-medium">{r.driver_id || "-"}</TableCell><TableCell>{r.nama}</TableCell><TableCell>{r.telepon || "-"}</TableCell><TableCell><Badge className={r.aktif ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}>{r.aktif ? "Aktif" : "Nonaktif"}</Badge></TableCell></>)} />
+            renderCell={(r) => (<><TableCell className="font-medium">{r.driver_id || "-"}</TableCell><TableCell>{r.nama}</TableCell><TableCell>{r.telepon || "-"}</TableCell><TableCell><Badge className={r.aktif ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}>{r.aktif ? "Aktif" : "Nonaktif"}</Badge></TableCell><TableCell>{r.foto_sim ? <button type="button" onClick={() => setSimView(r.foto_sim)} data-testid="view-sim" title="Lihat foto SIM"><img src={r.foto_sim} alt="SIM" className="h-10 w-16 rounded border border-slate-200 object-cover transition hover:opacity-80" /></button> : <span className="text-xs text-slate-400">-</span>}</TableCell></>)} />
         </TabsContent>
       </Tabs>
 
@@ -141,6 +176,24 @@ export default function MasterData() {
               <div><Label>Nama</Label><Input value={dialog.data.nama} onChange={(e) => setField("nama", e.target.value)} data-testid="input-driver-nama" /></div>
               <div><Label>Nomor Telepon</Label><Input value={dialog.data.telepon} onChange={(e) => setField("telepon", e.target.value)} data-testid="input-driver-telepon" /></div>
               <div className="flex items-center gap-2"><Switch checked={dialog.data.aktif} onCheckedChange={(v) => setField("aktif", v)} data-testid="input-driver-aktif" /><Label>Aktif</Label></div>
+              <div>
+                <Label>Foto SIM</Label>
+                <div className="mt-1 flex items-center gap-3">
+                  {dialog.data.foto_sim ? (
+                    <img src={dialog.data.foto_sim} alt="SIM" className="h-20 w-32 rounded-md border border-slate-200 object-cover" data-testid="sim-preview" />
+                  ) : (
+                    <div className="flex h-20 w-32 items-center justify-center rounded-md border border-dashed border-slate-300 text-xs text-slate-400">Belum ada</div>
+                  )}
+                  <div className="flex flex-col gap-2">
+                    <input type="file" accept="image/*" id="sim-file-input" className="hidden" onChange={handleSimFile} data-testid="input-sim-file" />
+                    <Button type="button" variant="outline" size="sm" onClick={() => document.getElementById("sim-file-input").click()} data-testid="upload-sim-btn">
+                      {dialog.data.foto_sim ? "Ganti Foto" : "Unggah Foto"}
+                    </Button>
+                    {dialog.data.foto_sim && <Button type="button" variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => setField("foto_sim", null)} data-testid="remove-sim-btn">Hapus Foto</Button>}
+                  </div>
+                </div>
+                <p className="mt-1 text-xs text-slate-400">Format gambar (JPG/PNG). Otomatis dikompres saat diunggah.</p>
+              </div>
             </div>
           )}
           <DialogFooter><Button variant="ghost" onClick={() => setDialog(null)}>Batal</Button><Button onClick={save} className="bg-emerald-600 hover:bg-emerald-700" data-testid="save-master-btn">Simpan</Button></DialogFooter>
@@ -153,6 +206,12 @@ export default function MasterData() {
           <AlertDialogFooter><AlertDialogCancel>Batal</AlertDialogCancel><AlertDialogAction onClick={doDelete} className="bg-red-600 hover:bg-red-700" data-testid="confirm-delete-master">Hapus</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={!!simView} onOpenChange={(o) => !o && setSimView(null)}>
+        <DialogContent className="max-w-lg" data-testid="sim-lightbox">
+          {simView && <img src={simView} alt="Foto SIM" className="max-h-[70vh] w-full rounded-md object-contain" />}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

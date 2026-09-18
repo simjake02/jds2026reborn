@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { api, fmtRp, fmtNum, monthLabel, downloadFile } from "@/lib/api";
+import { usePersistedState } from "@/hooks/use-persisted-state";
 import { PageHeader, SectionCard, LabeledField, FilterBar } from "@/components/Shared";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -17,10 +18,10 @@ const SORT_LABEL = { omset: "Omset Tertinggi", order: "Order Terbanyak", margin:
 export default function UnitAnalysis() {
   const [data, setData] = useState({ summary: [], freq: [], units: [], freq_keys: [] });
   const [allUnits, setAllUnits] = useState([]);
-  const [unit, setUnit] = useState("all");
-  const [start, setStart] = useState("");
-  const [end, setEnd] = useState("");
-  const [sortBy, setSortBy] = useState("omset");
+  const [unit, setUnit] = usePersistedState("unit.filter", "all");
+  const [start, setStart] = usePersistedState("flt.start", "");
+  const [end, setEnd] = usePersistedState("flt.end", "");
+  const [sortBy, setSortBy] = usePersistedState("unit.sort", "omset");
 
   useEffect(() => {
     api.get("/units").then((res) => setAllUnits(res.data.map((u) => u.nama)));

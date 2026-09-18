@@ -6,6 +6,7 @@ import {
   LogOut, Menu, X, TrendingUp, ShieldCheck
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import logo from "@/assets/logo.png";
 
 const ROLE_LABEL = { owner: "Pemilik", admin: "Admin Operasional", operator: "Operator" };
 
@@ -33,9 +34,7 @@ export default function Layout({ children }) {
         }`}
       >
         <div className="flex h-16 items-center gap-2 border-b border-slate-800 px-5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-600 text-white">
-            <Car className="h-5 w-5" />
-          </div>
+          <img src={logo} alt="Jawa Dwipa Solutions" className="h-9 w-9 shrink-0 rounded-lg bg-white object-contain p-0.5" />
           <div>
             <p className="text-sm font-bold text-white leading-tight">Jawa Dwipa</p>
             <p className="text-[10px] uppercase tracking-widest text-emerald-400">Operasional</p>

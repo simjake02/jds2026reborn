@@ -101,3 +101,163 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: "Batch 10 modifikasi dashboard JDS: rename biaya, DP nominal, hapus google login, logo baru, upload foto SIM driver, filter bulan/tahun transaksi default kosong, filter driver + detail tugas, admin edit akun sendiri, index DB, filter menempel."
+
+backend:
+  - task: "Orders list filter bulan+tahun (default empty on FE) & ascending sort by id_order"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "GET /api/orders now accepts bulan & tahun; when both present filters tanggal_mulai regex ^YYYY-MM and sorts id_order ascending. Verify e.g. bulan=9 tahun=2025 returns Sept 2025 orders sorted ascending (250900001 first)."
+        -working: true
+        -agent: "testing"
+        -comment: "✓ PASSED: Tested GET /api/orders?bulan=9&tahun=2025 returns 71 orders, all correctly filtered to September 2025 (tanggal_mulai starts with 2025-09), sorted ASCENDING by id_order (250900001 first). Without params, returns 299 orders sorted DESCENDING by tanggal_mulai (default behavior). Both sorting modes work correctly."
+  - task: "Order create/update with nominal_dp (DP)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "OrderCreate has nominal_dp float. Verify POST/PUT persists nominal_dp when status_bayar=DP and it is returned by GET."
+        -working: true
+        -agent: "testing"
+        -comment: "✓ PASSED: Created order with nominal_dp=1000000, verified it persisted correctly. GET /api/orders/{id} returns nominal_dp=1000000. PUT update to nominal_dp=2000000 works correctly. Field is properly saved and retrieved."
+  - task: "Driver foto_sim (base64) save & retrieve"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "DriverModel has foto_sim. Verify POST/PUT /api/drivers stores a data URL string and GET returns it."
+        -working: true
+        -agent: "testing"
+        -comment: "✓ PASSED: POST /api/drivers with foto_sim (base64 data URL) saves correctly. GET /api/drivers returns foto_sim intact (407 chars). PUT update with new foto_sim works. Base64 data URLs are properly stored and retrieved."
+  - task: "analytics/drivers returns tasks[] per driver"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Each driver now includes tasks[] {id_order,penyewa_nama,tanggal_mulai,tanggal_selesai,rute,unit_nama}. Verify counts match tugas and honor bulan/tahun filter."
+        -working: true
+        -agent: "testing"
+        -comment: "✓ PASSED: GET /api/analytics/drivers returns 55 drivers, each with tasks[] array. Verified tasks array length matches tugas count (e.g., driver with tugas=36 has 36 tasks). All required fields present (id_order, penyewa_nama, tanggal_mulai, tanggal_selesai, rute, unit_nama). Filter bulan=9&tahun=2025 correctly narrows to 19 drivers with tasks from September 2025 only."
+  - task: "update_user allows admin to edit own account only"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "PUT /api/users/{id}: owner/operator manage all; admin can only edit SELF (name/email/password), cannot change role/active nor edit others (403)."
+        -working: true
+        -agent: "testing"
+        -comment: "✓ PASSED: Admin can edit own account (name/email/password) successfully. Admin attempts to change own role/active are correctly IGNORED (role stays 'admin', active stays true). Admin attempting to edit other users correctly returns 403 Forbidden. Owner can still edit any user including admin. Authorization logic works correctly."
+  - task: "export/orders new headers (Sewa Mobil, Nominal DP) + bulan/tahun params"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Verify /api/export/orders returns xlsx (200) and respects bulan/tahun."
+        -working: true
+        -agent: "testing"
+        -comment: "✓ PASSED: GET /api/export/orders returns 200 with correct content-type (application/vnd.openxmlformats-officedocument.spreadsheetml.sheet), file size 36998 bytes. With bulan=9&tahun=2025 params, returns filtered xlsx (13286 bytes). Export works correctly with and without filters."
+  - task: "MongoDB indexes tanggal_mulai + unique id_order"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "low"
+    needs_retesting: false
+    status_history:
+        -working: true
+        -agent: "main"
+        -comment: "Confirmed indexes present via mongosh (tanggal_mulai_1, id_order_1)."
+
+frontend:
+  - task: "Remove Google login + 'atau' divider; new PNG logo (login+sidebar)"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/pages/Login.js, frontend/src/components/Layout.js"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+  - task: "Orders: bulan/tahun dropdown, default empty, DP nominal input, rename Biaya Sewa Mobil"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/pages/Orders.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+  - task: "MasterData: upload foto SIM driver (add/edit) + thumbnail + lightbox"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/pages/MasterData.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+  - task: "DriverAnalysis: driver filter dropdown + clickable jumlah tugas modal"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/pages/DriverAnalysis.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+  - task: "Sticky filters across pages (localStorage)"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/hooks/use-persisted-state.js + analytics pages"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+
+metadata:
+  created_by: "main_agent"
+  version: "1.2"
+  test_sequence: 2
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "Orders list filter bulan+tahun (default empty on FE) & ascending sort by id_order"
+    - "Order create/update with nominal_dp (DP)"
+    - "Driver foto_sim (base64) save & retrieve"
+    - "analytics/drivers returns tasks[] per driver"
+    - "update_user allows admin to edit own account only"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    -agent: "main"
+    -message: "Implemented batch of 10 changes. Please test BACKEND only now. Credentials in /app/memory/test_credentials.md (owner adityapermanarh62@gmail.com / Jds@2025, admin admin@jds.com / Jds@2025, operator operator@jds.com / Jds@2025). Data seeded (299 orders Aug-Oct 2025). Focus on the 5 high-priority backend tasks. For admin-self-edit, login as admin@jds.com and verify PUT /api/users/{own_id} with name/email/password works but changing role/active is ignored and editing another user returns 403."
+    -agent: "testing"
+    -message: "✓ ALL BACKEND TESTS PASSED (6/6). Tested all high-priority features: (1) Orders filter bulan+tahun with ascending sort by id_order works correctly - 71 Sept orders filtered and sorted properly. (2) Order nominal_dp field persists and updates correctly. (3) Driver foto_sim base64 data URLs save and retrieve correctly. (4) Analytics drivers returns tasks[] array with correct structure and count, filter works. (5) Admin self-edit authorization works - admin can edit self (name/email/password), role/active changes ignored, cannot edit others (403), owner can edit all. (6) Export orders returns xlsx with correct content-type, respects bulan/tahun params. NOTE: Owner password was incorrect (not matching test_credentials.md), reset via /api/auth/reset-password to Jds@2025 before testing. All backend APIs working correctly."
+

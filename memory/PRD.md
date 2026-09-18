@@ -30,7 +30,7 @@ Aplikasi web operasional internal untuk perusahaan jasa travel di Surabaya. Akse
 - ✅ Tested: backend 26/26 pytest pass; semua flow frontend pass.
 
 ## Backlog / Next
-- ✅ (2025-07) Chart Unit "Top 5 + Lainnya" per bulan dengan warna konsisten per nama unit; tabel Ringkasan Unit dengan dropdown urut (omset/order/margin); toolbar FilterBar seragam (Pilih Unit/Tipe kiri, tanggal bersebelahan, Excel satu baris) di Ringkasan Eksekutif, Analisis Klien & Analisis Unit.
+- ✅ (2025-07 batch) Rename "Biaya Sewa Rekanan"→"Biaya Sewa Mobil"; input Nominal DP saat status bayar DP; hapus login Google + divider; logo PNG baru (login+sidebar); upload Foto SIM driver (kompres base64) + thumbnail/lightbox; Transaksi default kosong + filter dropdown Bulan/Tahun (urut naik id_order); filter driver di Daftar Driver + klik "jumlah tugas" → modal detail tugas; Admin bisa ubah akun sendiri; index MongoDB (tanggal_mulai, unique id_order); filter menempel antar halaman (localStorage).
 - P1: unique index on orders.id_order.
 - P1: Index MongoDB pada `tanggal_mulai`, unique `id_order`; pagination list endpoints.
 - P2: Kolom "sisa pembayaran"/status pembayaran; ekspor PDF; audit log per user.

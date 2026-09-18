@@ -77,6 +77,7 @@ class OrderCreate(BaseModel):
     biaya_lain: float = 0
     ket: Optional[str] = ""
     status_bayar: Optional[str] = "Belum Bayar"
+    nominal_dp: Optional[float] = 0
     drivers: List[OrderDriverItem] = []
 
 
@@ -99,6 +100,7 @@ class DriverModel(BaseModel):
     nama: str
     telepon: Optional[str] = ""
     aktif: bool = True
+    foto_sim: Optional[str] = None
 
 
 async def get_current_user(request: Request):
@@ -298,10 +300,18 @@ async def create_user_account(body: CreateUserBody, user=Depends(require_roles("
 
 
 @api_router.put("/users/{user_id}")
-async def update_user(user_id: str, body: dict, user=Depends(require_roles("owner", "operator"))):
+async def update_user(user_id: str, body: dict, user=Depends(get_current_user)):
+    role = user.get("role")
+    is_self = user_id == user.get("user_id")
+    # owner & operator: kelola semua pengguna. admin: hanya boleh ubah akunnya sendiri.
+    if role not in ("owner", "operator") and not (role == "admin" and is_self):
+        raise HTTPException(status_code=403, detail="Anda tidak memiliki akses untuk mengubah pengguna ini")
     target = await db.users.find_one({"user_id": user_id})
     if not target:
         raise HTTPException(status_code=404, detail="Pengguna tidak ditemukan")
+    # admin yang mengubah dirinya sendiri hanya boleh ubah nama/email/password
+    if role == "admin":
+        body = {k: v for k, v in body.items() if k in ("name", "email", "password")}
     upd = {}
     if "role" in body and body["role"] in ("owner", "admin", "operator"):
         upd["role"] = body["role"]
@@ -485,7 +495,8 @@ async def orders_next_code(user=Depends(get_current_user), tanggal: Optional[str
 
 @api_router.get("/orders")
 async def list_orders(user=Depends(get_current_user), search: Optional[str] = None,
-                      start: Optional[str] = None, end: Optional[str] = None, status: Optional[str] = None):
+                      start: Optional[str] = None, end: Optional[str] = None, status: Optional[str] = None,
+                      bulan: Optional[int] = None, tahun: Optional[int] = None):
     q = {}
     if search:
         q["$or"] = [{"penyewa_nama": {"$regex": search, "$options": "i"}},
@@ -498,7 +509,11 @@ async def list_orders(user=Depends(get_current_user), search: Optional[str] = No
         q.setdefault("tanggal_mulai", {})["$lte"] = end
     if status in ("lengkap", "belum_lengkap"):
         q["status"] = status
-    return await db.orders.find(q, {"_id": 0}).sort("tanggal_mulai", -1).to_list(5000)
+    by_period = bulan and tahun
+    if by_period:
+        q["tanggal_mulai"] = {"$regex": f"^{int(tahun):04d}-{int(bulan):02d}"}
+    sort_field, sort_dir = ("id_order", 1) if by_period else ("tanggal_mulai", -1)
+    return await db.orders.find(q, {"_id": 0}).sort(sort_field, sort_dir).to_list(5000)
 
 
 @api_router.post("/orders")
@@ -670,7 +685,7 @@ async def analytics_units(user=Depends(get_current_user), start: Optional[str] =
 @api_router.get("/analytics/drivers")
 async def analytics_drivers(user=Depends(get_current_user), bulan: Optional[int] = None, tahun: Optional[int] = None):
     orders = await db.orders.find({}, {"_id": 0}).to_list(10000)
-    by_driver = defaultdict(lambda: {"tugas": 0, "total_gaji": 0})
+    by_driver = defaultdict(lambda: {"tugas": 0, "total_gaji": 0, "tasks": []})
     for o in orders:
         mk = month_key(o)
         if mk != "N/A":
@@ -685,6 +700,18 @@ async def analytics_drivers(user=Depends(get_current_user), bulan: Optional[int]
             nama = d.get("driver_nama") or "-"
             by_driver[nama]["tugas"] += 1
             by_driver[nama]["total_gaji"] += float(d.get("gaji") or 0)
+            by_driver[nama]["tasks"].append({
+                "id_order": o.get("id_order"),
+                "penyewa_nama": o.get("penyewa_nama"),
+                "tanggal_mulai": o.get("tanggal_mulai"),
+                "tanggal_selesai": o.get("tanggal_selesai"),
+                "rute": o.get("rute"),
+                "unit_nama": o.get("unit_nama"),
+                "segmen": d.get("segmen") or "",
+                "gaji": float(d.get("gaji") or 0),
+            })
+    for v in by_driver.values():
+        v["tasks"].sort(key=lambda t: t.get("id_order") or "")
     data = sorted([{"nama": k, **v} for k, v in by_driver.items()], key=lambda x: x["tugas"], reverse=True)
     return {"drivers": data}
 
@@ -721,12 +748,13 @@ def xlsx_response(buf, filename):
 
 @api_router.get("/export/orders")
 async def export_orders(user=Depends(get_current_user), search: Optional[str] = None,
-                        start: Optional[str] = None, end: Optional[str] = None, status: Optional[str] = None):
-    orders = await list_orders(user, search, start, end, status)
+                        start: Optional[str] = None, end: Optional[str] = None, status: Optional[str] = None,
+                        bulan: Optional[int] = None, tahun: Optional[int] = None):
+    orders = await list_orders(user, search, start, end, status, bulan, tahun)
     status_label = {"lengkap": "Lengkap", "belum_lengkap": "Belum Lengkap"}
     headers = ["ID Order", "Penyewa", "Tipe", "Tamu", "Unit", "Tgl Mulai", "Tgl Selesai", "Rute",
-               "Harga", "Sewa Rekanan", "Gaji Driver", "BBM", "Tol/Parkir", "Lain-lain",
-               "Total Biaya", "Margin", "Driver", "Status Kelengkapan", "Status Pembayaran"]
+               "Harga", "Sewa Mobil", "Gaji Driver", "BBM", "Tol/Parkir", "Lain-lain",
+               "Total Biaya", "Margin", "Driver", "Status Kelengkapan", "Status Pembayaran", "Nominal DP"]
     rows = []
     for o in orders:
         drv = "; ".join(f"{d.get('driver_nama')} ({d.get('segmen','')}) Rp{int(d.get('gaji') or 0)}" for d in o.get("drivers", []))
@@ -735,7 +763,8 @@ async def export_orders(user=Depends(get_current_user), search: Optional[str] = 
                      o.get("rute"), o.get("harga"), o.get("biaya_sewa_rekanan"), o.get("total_gaji_driver"),
                      o.get("biaya_bbm"), o.get("biaya_toll_parkir"), o.get("biaya_lain"),
                      o.get("total_biaya"), o.get("margin"), drv,
-                     status_label.get(o.get("status"), o.get("status")), o.get("status_bayar") or "Belum Bayar"])
+                     status_label.get(o.get("status"), o.get("status")), o.get("status_bayar") or "Belum Bayar",
+                     o.get("nominal_dp") or 0])
     return xlsx_response(make_xlsx("Transaksi", headers, rows), "transaksi.xlsx")
 
 
@@ -786,6 +815,11 @@ async def seed_accounts():
         await db.users.create_index("email", unique=True)
     except Exception as e:
         logger.warning(f"email index: {e}")
+    try:
+        await db.orders.create_index("tanggal_mulai")
+        await db.orders.create_index("id_order", unique=True)
+    except Exception as e:
+        logger.warning(f"orders index: {e}")
     pwd = os.environ.get("DEFAULT_PASSWORD", "Jds@2025")
     owner_email = os.environ.get("OWNER_EMAIL", "adityapermanarh62@gmail.com").strip().lower()
     defaults = [

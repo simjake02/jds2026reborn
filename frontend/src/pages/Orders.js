@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { api, fmtRp, fmtDate, downloadFile } from "@/lib/api";
+import { api, fmtRp, fmtDate, downloadFile, BULAN } from "@/lib/api";
+import { usePersistedState } from "@/hooks/use-persisted-state";
 import { PageHeader, SectionCard } from "@/components/Shared";
 import { CurrencyInput } from "@/components/CurrencyInput";
 import { FormDialog } from "@/components/FormDialog";
@@ -18,8 +19,9 @@ import { useAuth } from "@/context/AuthContext";
 
 const tipeLabel = { A: "Agen", D: "Kedinasan", P: "Perorangan" };
 const tipeBadge = { A: "bg-blue-100 text-blue-700", D: "bg-amber-100 text-amber-700", P: "bg-purple-100 text-purple-700" };
-const empty = { id_order: "", penyewa_id: "", penyewa_nama: "", tamu: "", unit_id: "", unit_nama: "", tanggal_mulai: "", tanggal_selesai: "", rute: "", harga: "", biaya_sewa_rekanan: "", biaya_bbm: "", biaya_toll_parkir: "", biaya_lain: "", ket: "", status_bayar: "Belum Bayar", drivers: [] };
+const empty = { id_order: "", penyewa_id: "", penyewa_nama: "", tamu: "", unit_id: "", unit_nama: "", tanggal_mulai: "", tanggal_selesai: "", rute: "", harga: "", biaya_sewa_rekanan: "", biaya_bbm: "", biaya_toll_parkir: "", biaya_lain: "", ket: "", status_bayar: "Belum Bayar", nominal_dp: "", drivers: [] };
 const bayarBadge = { "Lunas": "bg-emerald-100 text-emerald-700", "DP": "bg-amber-100 text-amber-700", "Belum Bayar": "bg-red-100 text-red-700" };
+const YEARS = [2024, 2025, 2026, 2027];
 
 export default function Orders() {
   const { user } = useAuth();
@@ -28,8 +30,10 @@ export default function Orders() {
   const [clients, setClients] = useState([]);
   const [units, setUnits] = useState([]);
   const [drivers, setDrivers] = useState([]);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [search, setSearch] = usePersistedState("orders.search", "");
+  const [statusFilter, setStatusFilter] = usePersistedState("orders.status", "all");
+  const [bulan, setBulan] = usePersistedState("orders.bulan", "");
+  const [tahun, setTahun] = usePersistedState("orders.tahun", "");
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(1);
   const [form, setForm] = useState(empty);
@@ -43,9 +47,10 @@ export default function Orders() {
     setClients(c.data); setUnits(u.data); setDrivers(d.data);
   }, []);
   const loadOrders = useCallback(async () => {
-    const res = await api.get("/orders", { params: { search, status: statusFilter === "all" ? undefined : statusFilter } });
+    if (!bulan || !tahun) { setOrders([]); return; }
+    const res = await api.get("/orders", { params: { search: search || undefined, status: statusFilter === "all" ? undefined : statusFilter, bulan, tahun } });
     setOrders(res.data);
-  }, [search, statusFilter]);
+  }, [search, statusFilter, bulan, tahun]);
 
   useEffect(() => { loadMasters(); }, [loadMasters]);
   useEffect(() => { loadOrders(); }, [loadOrders]);
@@ -71,7 +76,7 @@ export default function Orders() {
 
   const openCreate = async () => { setForm(empty); setEditId(null); setIdTouched(false); setStep(1); setOpen(true); fetchNextCode(); };
   const openEdit = async (o) => {
-    setForm({ ...empty, ...o, harga: o.harga || "", biaya_sewa_rekanan: o.biaya_sewa_rekanan || "", biaya_bbm: o.biaya_bbm || "", biaya_toll_parkir: o.biaya_toll_parkir || "", biaya_lain: o.biaya_lain || "", drivers: (o.drivers || []).map((d) => ({ ...d })) });
+    setForm({ ...empty, ...o, harga: o.harga || "", biaya_sewa_rekanan: o.biaya_sewa_rekanan || "", biaya_bbm: o.biaya_bbm || "", biaya_toll_parkir: o.biaya_toll_parkir || "", biaya_lain: o.biaya_lain || "", nominal_dp: o.nominal_dp || "", drivers: (o.drivers || []).map((d) => ({ ...d })) });
     setEditId(o.id); setIdTouched(true); setStep(1); setOpen(true);
   };
 
@@ -104,6 +109,7 @@ export default function Orders() {
       harga: Number(form.harga || 0), biaya_sewa_rekanan: Number(form.biaya_sewa_rekanan || 0),
       biaya_bbm: Number(form.biaya_bbm || 0), biaya_toll_parkir: Number(form.biaya_toll_parkir || 0),
       biaya_lain: Number(form.biaya_lain || 0),
+      nominal_dp: form.status_bayar === "DP" ? Number(form.nominal_dp || 0) : 0,
       drivers: form.drivers.filter((d) => d.driver_nama).map((d) => ({ ...d, gaji: Number(d.gaji || 0) })),
     };
     try {
@@ -120,7 +126,19 @@ export default function Orders() {
 
   return (
     <div>
-      <PageHeader title="Transaksi Order" subtitle="Input & kelola order perjalanan">
+      <PageHeader title="Transaksi Order" subtitle="Pilih bulan & tahun untuk menampilkan transaksi">
+        <Select value={bulan} onValueChange={setBulan}>
+          <SelectTrigger className="w-36" data-testid="filter-bulan"><SelectValue placeholder="Pilih Bulan" /></SelectTrigger>
+          <SelectContent>
+            {BULAN.map((b, i) => <SelectItem key={i} value={String(i + 1)}>{b}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={tahun} onValueChange={setTahun}>
+          <SelectTrigger className="w-28" data-testid="filter-tahun"><SelectValue placeholder="Tahun" /></SelectTrigger>
+          <SelectContent>
+            {YEARS.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+          </SelectContent>
+        </Select>
         <div className="flex rounded-lg border border-slate-200 p-0.5" data-testid="status-filter">
           {[["all", "Semua"], ["lengkap", "Lengkap"], ["belum_lengkap", "Belum Lengkap"]].map(([v, l]) => (
             <button key={v} onClick={() => setStatusFilter(v)} data-testid={`status-filter-${v}`}
@@ -131,7 +149,7 @@ export default function Orders() {
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
           <Input placeholder="Cari..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-48 pl-8" data-testid="search-orders" />
         </div>
-        <Button variant="outline" onClick={() => downloadFile(`/export/orders?search=${search}&status=${statusFilter === "all" ? "" : statusFilter}`, "transaksi.xlsx").then(() => toast.success("Excel diunduh"))} data-testid="export-btn">
+        <Button variant="outline" onClick={() => downloadFile(`/export/orders?search=${search}&status=${statusFilter === "all" ? "" : statusFilter}&bulan=${bulan}&tahun=${tahun}`, "transaksi.xlsx").then(() => toast.success("Excel diunduh"))} data-testid="export-btn">
           <Download className="mr-2 h-4 w-4" /> Excel
         </Button>
         <Button onClick={openCreate} className="bg-emerald-600 hover:bg-emerald-700" data-testid="add-order-btn">
@@ -174,6 +192,7 @@ export default function Orders() {
                     <Badge className={bayarBadge[o.status_bayar] || bayarBadge["Belum Bayar"]} data-testid={`bayar-${o.id_order}`}>
                       {o.status_bayar || "Belum Bayar"}
                     </Badge>
+                    {o.status_bayar === "DP" && Number(o.nominal_dp) > 0 && <div className="mt-0.5 text-xs text-slate-500">{fmtRp(o.nominal_dp)}</div>}
                   </TableCell>
                   <TableCell className="text-right">
                     <Button variant="ghost" size="icon" onClick={() => openEdit(o)} data-testid={`edit-${o.id_order}`}><Pencil className="h-4 w-4" /></Button>
@@ -181,7 +200,7 @@ export default function Orders() {
                   </TableCell>
                 </TableRow>
               ))}
-              {orders.length === 0 && <TableRow><TableCell colSpan={10} className="py-8 text-center text-slate-400">Belum ada transaksi</TableCell></TableRow>}
+              {orders.length === 0 && <TableRow><TableCell colSpan={10} className="py-8 text-center text-slate-400">{(!bulan || !tahun) ? "Pilih bulan dan tahun untuk menampilkan transaksi." : "Tidak ada transaksi pada periode ini."}</TableCell></TableRow>}
             </TableBody>
           </Table>
         </div>
@@ -230,7 +249,7 @@ export default function Orders() {
 
         {step === 2 && (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div><Label>Biaya Sewa Rekanan</Label><CurrencyInput value={form.biaya_sewa_rekanan} onChange={(v) => set("biaya_sewa_rekanan", v)} data-testid="input-rekanan" /></div>
+            <div><Label>Biaya Sewa Mobil</Label><CurrencyInput value={form.biaya_sewa_rekanan} onChange={(v) => set("biaya_sewa_rekanan", v)} data-testid="input-rekanan" /></div>
             <div><Label>Biaya BBM</Label><CurrencyInput value={form.biaya_bbm} onChange={(v) => set("biaya_bbm", v)} data-testid="input-bbm" /></div>
             <div><Label>Biaya Tol / Parkir</Label><CurrencyInput value={form.biaya_toll_parkir} onChange={(v) => set("biaya_toll_parkir", v)} data-testid="input-toll" /></div>
             <div><Label>Biaya Lain-lain</Label><CurrencyInput value={form.biaya_lain} onChange={(v) => set("biaya_lain", v)} data-testid="input-lain" /></div>
@@ -244,6 +263,9 @@ export default function Orders() {
                 </SelectContent>
               </Select>
             </div>
+            {form.status_bayar === "DP" && (
+              <div><Label>Nominal DP</Label><CurrencyInput value={form.nominal_dp} onChange={(v) => set("nominal_dp", v)} data-testid="input-nominal-dp" /><p className="mt-1 text-xs text-slate-400">Jumlah uang muka yang sudah dibayar penyewa.</p></div>
+            )}
             <div className="sm:col-span-2"><Label>Keterangan</Label><Textarea value={form.ket} onChange={(e) => set("ket", e.target.value)} data-testid="input-ket" /></div>
           </div>
         )}

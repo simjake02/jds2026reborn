@@ -18,6 +18,7 @@ import { useAuth } from "@/context/AuthContext";
 export default function UsersPage() {
   const { user } = useAuth();
   const canManage = ["owner", "operator"].includes(user?.role);
+  const isAdmin = user?.role === "admin";
   const [users, setUsers] = useState([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState({ email: "", password: "", name: "", role: "operator" });
@@ -63,7 +64,7 @@ export default function UsersPage() {
 
   return (
     <div>
-      <PageHeader title="Manajemen Pengguna" subtitle={canManage ? "Buat akun, ubah email/password, atur peran & hapus akses pengguna." : "Daftar pengguna sistem (hanya lihat)."}>
+      <PageHeader title="Manajemen Pengguna" subtitle={canManage ? "Buat akun, ubah email/password, atur peran & hapus akses pengguna." : isAdmin ? "Anda dapat mengubah akun Anda sendiri (nama, email, password)." : "Daftar pengguna sistem (hanya lihat)."}>
         {canManage && (
           <Button onClick={() => setCreateOpen(true)} className="bg-emerald-600 hover:bg-emerald-700" data-testid="add-user-btn">
             <UserPlus className="mr-2 h-4 w-4" /> Tambah Pengguna
@@ -74,7 +75,7 @@ export default function UsersPage() {
         <Table>
           <TableHeader><TableRow>
             <TableHead>Nama</TableHead><TableHead>Email</TableHead><TableHead>Peran</TableHead><TableHead>Status</TableHead>
-            {canManage && <TableHead className="text-right">Aksi</TableHead>}
+            {(canManage || isAdmin) && <TableHead className="text-right">Aksi</TableHead>}
           </TableRow></TableHeader>
           <TableBody>
             {users.map((u) => (
@@ -97,14 +98,18 @@ export default function UsersPage() {
                     <span className="text-sm text-slate-500">{u.active !== false ? "Aktif" : "Nonaktif"}</span>
                   </div>
                 </TableCell>
-                {canManage && (
+                {(canManage || isAdmin) && (
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" onClick={() => openEdit(u)} title="Ubah email/password" data-testid={`edit-user-${u.email}`}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => setDelUser(u)} disabled={u.user_id === user.user_id} title="Hapus akses" data-testid={`delete-user-${u.email}`}>
-                      <Trash2 className="h-4 w-4 text-red-600" />
-                    </Button>
+                    {(canManage || (isAdmin && u.user_id === user.user_id)) && (
+                      <Button variant="ghost" size="icon" onClick={() => openEdit(u)} title="Ubah email/password" data-testid={`edit-user-${u.email}`}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    )}
+                    {canManage && (
+                      <Button variant="ghost" size="icon" onClick={() => setDelUser(u)} disabled={u.user_id === user.user_id} title="Hapus akses" data-testid={`delete-user-${u.email}`}>
+                        <Trash2 className="h-4 w-4 text-red-600" />
+                      </Button>
+                    )}
                   </TableCell>
                 )}
               </TableRow>

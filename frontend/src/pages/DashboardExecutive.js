@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { api, fmtRp, fmtNum, fmtDate, monthLabel, downloadFile } from "@/lib/api";
+import { usePersistedState } from "@/hooks/use-persisted-state";
 import { PageHeader, KpiCard, SectionCard, LabeledField, FilterBar } from "@/components/Shared";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -17,9 +18,9 @@ const tipeLabel = { A: "Agen", D: "Kedinasan", P: "Perorangan" };
 export default function DashboardExecutive() {
   const [data, setData] = useState(null);
   const [orders, setOrders] = useState([]);
-  const [start, setStart] = useState("");
-  const [end, setEnd] = useState("");
-  const [search, setSearch] = useState("");
+  const [start, setStart] = usePersistedState("flt.start", "");
+  const [end, setEnd] = usePersistedState("flt.end", "");
+  const [search, setSearch] = usePersistedState("exec.search", "");
 
   const load = useCallback(async () => {
     const params = {};
