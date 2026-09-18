@@ -30,6 +30,7 @@ Aplikasi web operasional internal untuk perusahaan jasa travel di Surabaya. Akse
 - ✅ Tested: backend 26/26 pytest pass; semua flow frontend pass.
 
 ## Backlog / Next
+- ✅ (2025-07) Chart Unit "Top 5 + Lainnya" per bulan dengan warna konsisten per nama unit; tabel Ringkasan Unit dengan dropdown urut (omset/order/margin); toolbar FilterBar seragam (Pilih Unit/Tipe kiri, tanggal bersebelahan, Excel satu baris) di Ringkasan Eksekutif, Analisis Klien & Analisis Unit.
 - P1: unique index on orders.id_order.
 - P1: Index MongoDB pada `tanggal_mulai`, unique `id_order`; pagination list endpoints.
 - P2: Kolom "sisa pembayaran"/status pembayaran; ekspor PDF; audit log per user.

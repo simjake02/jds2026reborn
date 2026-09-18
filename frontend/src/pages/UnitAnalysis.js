@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { api, fmtRp, fmtNum, monthLabel, downloadFile } from "@/lib/api";
-import { PageHeader, SectionCard, LabeledField } from "@/components/Shared";
+import { PageHeader, SectionCard, LabeledField, FilterBar } from "@/components/Shared";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -43,26 +43,30 @@ export default function UnitAnalysis() {
 
   return (
     <div>
-      <PageHeader title="Analisis Operasional Unit" subtitle="Frekuensi & performa unit kendaraan">
+      <PageHeader title="Analisis Operasional Unit" subtitle="Frekuensi & performa unit kendaraan" />
+
+      <FilterBar>
         <LabeledField label="Pilih Unit">
           <Select value={unit} onValueChange={setUnit}>
-            <SelectTrigger className="w-52" data-testid="filter-unit"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-full sm:w-52" data-testid="filter-unit"><SelectValue /></SelectTrigger>
             <SelectContent className="max-h-64">
               <SelectItem value="all">Semua Unit</SelectItem>
               {allUnits.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}
             </SelectContent>
           </Select>
         </LabeledField>
-        <LabeledField label="Tanggal Mulai">
-          <Input type="date" value={start} onChange={(e) => setStart(e.target.value)} className="w-40" data-testid="filter-start" />
-        </LabeledField>
-        <LabeledField label="Tanggal Selesai">
-          <Input type="date" value={end} onChange={(e) => setEnd(e.target.value)} className="w-40" data-testid="filter-end" />
-        </LabeledField>
-        <Button variant="outline" onClick={() => downloadFile(`/export/units-analysis?start=${start}&end=${end}&unit=${unit === "all" ? "" : encodeURIComponent(unit)}`, "analisis_unit.xlsx").then(() => toast.success("Excel diunduh"))} data-testid="export-units-btn">
+        <div className="flex gap-3">
+          <LabeledField label="Tanggal Mulai">
+            <Input type="date" value={start} onChange={(e) => setStart(e.target.value)} className="w-full sm:w-40" data-testid="filter-start" />
+          </LabeledField>
+          <LabeledField label="Tanggal Selesai">
+            <Input type="date" value={end} onChange={(e) => setEnd(e.target.value)} className="w-full sm:w-40" data-testid="filter-end" />
+          </LabeledField>
+        </div>
+        <Button variant="outline" className="sm:ml-auto" onClick={() => downloadFile(`/export/units-analysis?start=${start}&end=${end}&unit=${unit === "all" ? "" : encodeURIComponent(unit)}`, "analisis_unit.xlsx").then(() => toast.success("Excel diunduh"))} data-testid="export-units-btn">
           <Download className="mr-2 h-4 w-4" /> Excel
         </Button>
-      </PageHeader>
+      </FilterBar>
 
       <SectionCard title="Frekuensi Pemakaian Unit per Bulan (Top 5 + Lainnya)" className="mb-6">
         <ResponsiveContainer width="100%" height={340}>

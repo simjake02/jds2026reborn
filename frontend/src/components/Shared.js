@@ -41,6 +41,17 @@ export function LabeledField({ label, children }) {
   );
 }
 
+export function FilterBar({ children, className = "" }) {
+  return (
+    <div
+      className={`mb-6 flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:flex-wrap sm:items-end ${className}`}
+      data-testid="filter-bar"
+    >
+      {children}
+    </div>
+  );
+}
+
 export function SectionCard({ title, action, children, className = "" }) {
   return (
     <Card className={`border-slate-200 shadow-sm ${className}`}>
