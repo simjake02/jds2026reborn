@@ -12,6 +12,8 @@ import UnitAnalysis from "@/pages/UnitAnalysis";
 import DriverAnalysis from "@/pages/DriverAnalysis";
 import Orders from "@/pages/Orders";
 import MasterData from "@/pages/MasterData";
+import KasbonDriver from "@/pages/KasbonDriver";
+import SlipGaji from "@/pages/SlipGaji";
 import UsersPage from "@/pages/Users";
 import { Loader2 } from "lucide-react";
 
@@ -40,6 +42,8 @@ function AppRouter() {
       <Route path="/analisis-driver" element={<Protected><DriverAnalysis /></Protected>} />
       <Route path="/transaksi" element={<Protected><Orders /></Protected>} />
       <Route path="/master" element={<Protected><MasterData /></Protected>} />
+      <Route path="/kasbon" element={<Protected><KasbonDriver /></Protected>} />
+      <Route path="/slip-gaji" element={<Protected><SlipGaji /></Protected>} />
       <Route path="/pengguna" element={<Protected><UsersPage /></Protected>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

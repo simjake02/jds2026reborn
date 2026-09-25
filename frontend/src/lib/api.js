@@ -43,3 +43,15 @@ export const downloadFile = async (path, filename) => {
   a.remove();
   window.URL.revokeObjectURL(url);
 };
+
+export const downloadPost = async (path, body, filename) => {
+  const res = await api.post(path, body, { responseType: "blob" });
+  const url = window.URL.createObjectURL(new Blob([res.data]));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+};

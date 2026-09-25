@@ -23,6 +23,22 @@ const empty = { id_order: "", penyewa_id: "", penyewa_nama: "", tamu: "", unit_i
 const bayarBadge = { "Lunas": "bg-emerald-100 text-emerald-700", "DP": "bg-amber-100 text-amber-700", "Belum Bayar": "bg-red-100 text-red-700" };
 const YEARS = [2024, 2025, 2026, 2027];
 
+// Enumerate ISO dates (YYYY-MM-DD) between start & end inclusive (local-time safe).
+function datesBetween(start, end) {
+  if (!start || !end) return [];
+  const s = start.split("-").map(Number), e = end.split("-").map(Number);
+  if (s.length < 3 || e.length < 3) return [];
+  let cur = new Date(s[0], s[1] - 1, s[2]);
+  const last = new Date(e[0], e[1] - 1, e[2]);
+  if (isNaN(cur) || isNaN(last) || cur > last) return [];
+  const out = []; let i = 0;
+  while (cur <= last && i < 120) {
+    out.push(`${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, "0")}-${String(cur.getDate()).padStart(2, "0")}`);
+    cur.setDate(cur.getDate() + 1); i++;
+  }
+  return out;
+}
+
 export default function Orders() {
   const { user } = useAuth();
   const canDelete = ["owner", "admin"].includes(user?.role);
@@ -60,6 +76,7 @@ export default function Orders() {
   const totalGaji = useMemo(() => form.drivers.reduce((s, d) => s + Number(d.gaji || 0), 0), [form.drivers]);
   const totalBiaya = totalGaji + Number(form.biaya_sewa_rekanan || 0) + Number(form.biaya_bbm || 0) + Number(form.biaya_toll_parkir || 0) + Number(form.biaya_lain || 0);
   const margin = Number(form.harga || 0) - totalBiaya;
+  const dateOptions = datesBetween(form.tanggal_mulai, form.tanggal_selesai);
 
   const formLengkap = useMemo(() => {
     const basic = form.penyewa_nama && form.tamu && form.unit_nama && form.tanggal_mulai && form.tanggal_selesai && form.rute && Number(form.harga || 0) > 0;
@@ -76,7 +93,7 @@ export default function Orders() {
 
   const openCreate = async () => { setForm(empty); setEditId(null); setIdTouched(false); setStep(1); setOpen(true); fetchNextCode(); };
   const openEdit = async (o) => {
-    setForm({ ...empty, ...o, harga: o.harga || "", biaya_sewa_rekanan: o.biaya_sewa_rekanan || "", biaya_bbm: o.biaya_bbm || "", biaya_toll_parkir: o.biaya_toll_parkir || "", biaya_lain: o.biaya_lain || "", nominal_dp: o.nominal_dp || "", drivers: (o.drivers || []).map((d) => ({ ...d })) });
+    setForm({ ...empty, ...o, harga: o.harga || "", biaya_sewa_rekanan: o.biaya_sewa_rekanan || "", biaya_bbm: o.biaya_bbm || "", biaya_toll_parkir: o.biaya_toll_parkir || "", biaya_lain: o.biaya_lain || "", nominal_dp: o.nominal_dp || "", drivers: (o.drivers || []).map((d) => ({ ...d, tanggal: d.tanggal || o.tanggal_mulai || "" })) });
     setEditId(o.id); setIdTouched(true); setStep(1); setOpen(true);
   };
 
@@ -85,7 +102,7 @@ export default function Orders() {
     if (!editId && !idTouched && v) fetchNextCode(v);
   };
 
-  const addDriverRow = () => setForm((f) => ({ ...f, drivers: [...f.drivers, { driver_id: "", driver_nama: "", gaji: "", segmen: "" }] }));
+  const addDriverRow = () => setForm((f) => ({ ...f, drivers: [...f.drivers, { driver_id: "", driver_nama: "", gaji: "", segmen: "", tanggal: f.tanggal_mulai || "" }] }));
   const removeDriverRow = (i) => setForm((f) => ({ ...f, drivers: f.drivers.filter((_, idx) => idx !== i) }));
   const setDriver = (i, k, v) => setForm((f) => ({ ...f, drivers: f.drivers.map((d, idx) => idx === i ? { ...d, [k]: v } : d) }));
 
@@ -280,19 +297,25 @@ export default function Orders() {
 
             {form.drivers.map((d, i) => (
               <div key={i} className="grid grid-cols-1 gap-2 rounded-lg border border-slate-200 p-3 sm:grid-cols-12" data-testid={`driver-row-form-${i}`}>
-                <div className="sm:col-span-4"><Label className="text-xs">Driver</Label>
+                <div className="sm:col-span-3"><Label className="text-xs">Driver</Label>
                   <Select value={d.driver_id || ""} onValueChange={(v) => pickDriver(i, v)}>
                     <SelectTrigger data-testid={`select-driver-${i}`}><SelectValue placeholder="Pilih driver" /></SelectTrigger>
                     <SelectContent className="max-h-64">{drivers.map((dr) => <SelectItem key={dr.id} value={dr.driver_id}>{dr.driver_id} · {dr.nama}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
-                <div className="sm:col-span-4"><Label className="text-xs">Segmen Rute</Label><Input value={d.segmen} onChange={(e) => setDriver(i, "segmen", e.target.value)} data-testid={`input-segmen-${i}`} /></div>
-                <div className="sm:col-span-3"><Label className="text-xs">Gaji</Label><CurrencyInput value={d.gaji} onChange={(v) => setDriver(i, "gaji", v)} data-testid={`input-gaji-${i}`} /></div>
+                <div className="sm:col-span-3"><Label className="text-xs">Tanggal</Label>
+                  <Select value={d.tanggal || ""} onValueChange={(v) => setDriver(i, "tanggal", v)} disabled={dateOptions.length === 0}>
+                    <SelectTrigger data-testid={`select-tanggal-${i}`}><SelectValue placeholder={dateOptions.length ? "Pilih tanggal" : "Isi tgl order"} /></SelectTrigger>
+                    <SelectContent className="max-h-64">{dateOptions.map((dt) => <SelectItem key={dt} value={dt}>{fmtDate(dt)}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div className="sm:col-span-3"><Label className="text-xs">Segmen Rute</Label><Input value={d.segmen} onChange={(e) => setDriver(i, "segmen", e.target.value)} data-testid={`input-segmen-${i}`} /></div>
+                <div className="sm:col-span-2"><Label className="text-xs">Gaji</Label><CurrencyInput value={d.gaji} onChange={(v) => setDriver(i, "gaji", v)} data-testid={`input-gaji-${i}`} /></div>
                 <div className="flex items-end sm:col-span-1"><Button type="button" variant="ghost" size="icon" onClick={() => removeDriverRow(i)} data-testid={`remove-driver-${i}`}><X className="h-4 w-4 text-red-600" /></Button></div>
               </div>
             ))}
-            <Button type="button" variant="outline" onClick={addDriverRow} disabled={form.drivers.length >= 4} className="w-full" data-testid="add-driver-row-btn">
-              <Plus className="mr-2 h-4 w-4" /> Tambah Driver {form.drivers.length >= 4 && "(maks 4)"}
+            <Button type="button" variant="outline" onClick={addDriverRow} className="w-full" data-testid="add-driver-row-btn">
+              <Plus className="mr-2 h-4 w-4" /> Tambah Penugasan Driver (per hari)
             </Button>
 
             <div className="grid grid-cols-2 gap-2 rounded-lg bg-slate-900 p-4 text-white sm:grid-cols-4">

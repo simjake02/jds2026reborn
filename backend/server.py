@@ -58,6 +58,7 @@ class OrderDriverItem(BaseModel):
     driver_nama: str
     gaji: float = 0
     segmen: Optional[str] = ""
+    tanggal: Optional[str] = None
 
 
 class OrderCreate(BaseModel):
@@ -365,10 +366,15 @@ async def create_client(body: ClientModel, user=Depends(require_roles("owner", "
 
 @api_router.put("/clients/{id}")
 async def update_client(id: str, body: ClientModel, user=Depends(require_roles("owner", "admin", "operator"))):
+    existing = await db.clients.find_one({"id": id})
     body.tipe = client_tipe(body.penyewa_id)
     doc = body.model_dump()
     doc["id"] = id
     await db.clients.update_one({"id": id}, {"$set": doc})
+    old_pid = (existing or {}).get("penyewa_id")
+    if old_pid:
+        await db.orders.update_many({"penyewa_id": old_pid}, {"$set": {
+            "penyewa_nama": doc["nama"], "penyewa_id": doc["penyewa_id"], "penyewa_tipe": doc["tipe"]}})
     return clean(doc)
 
 
@@ -392,9 +398,14 @@ async def create_unit(body: UnitModel, user=Depends(require_roles("owner", "admi
 
 @api_router.put("/units/{id}")
 async def update_unit(id: str, body: UnitModel, user=Depends(require_roles("owner", "admin", "operator"))):
+    existing = await db.units.find_one({"id": id})
     doc = body.model_dump()
     doc["id"] = id
     await db.units.update_one({"id": id}, {"$set": doc})
+    old_uid = (existing or {}).get("unit_id")
+    if old_uid:
+        await db.orders.update_many({"unit_id": old_uid}, {"$set": {
+            "unit_nama": doc["nama"], "unit_id": doc["unit_id"]}})
     return clean(doc)
 
 
@@ -435,11 +446,20 @@ async def create_driver(body: DriverModel, user=Depends(require_roles("owner", "
 
 @api_router.put("/drivers/{id}")
 async def update_driver(id: str, body: DriverModel, user=Depends(require_roles("owner", "admin", "operator"))):
+    existing = await db.drivers.find_one({"id": id})
     doc = body.model_dump()
     doc["id"] = id
     if not doc.get("driver_id"):
-        doc["driver_id"] = await gen_driver_code()
+        doc["driver_id"] = (existing or {}).get("driver_id") or await gen_driver_code()
     await db.drivers.update_one({"id": id}, {"$set": doc})
+    old_code = (existing or {}).get("driver_id")
+    if old_code:
+        await db.orders.update_many(
+            {"drivers.driver_id": old_code},
+            {"$set": {"drivers.$[e].driver_nama": doc["nama"], "drivers.$[e].driver_id": doc["driver_id"]}},
+            array_filters=[{"e.driver_id": old_code}],
+        )
+        await db.kasbon.update_many({"driver_id": old_code}, {"$set": {"driver_nama": doc["nama"], "driver_id": doc["driver_id"]}})
     return clean(doc)
 
 
@@ -519,8 +539,6 @@ async def list_orders(user=Depends(get_current_user), search: Optional[str] = No
 @api_router.post("/orders")
 async def create_order(body: OrderCreate, user=Depends(require_roles("owner", "admin", "operator"))):
     o = body.model_dump()
-    if len(o.get("drivers", [])) > 4:
-        raise HTTPException(status_code=400, detail="Maksimal 4 driver dalam satu order")
     total_gaji = sum(float(d.get("gaji") or 0) for d in o.get("drivers", []))
     if total_gaji > float(o.get("harga") or 0):
         raise HTTPException(status_code=400, detail="Total gaji driver tidak boleh melebihi harga sewa")
@@ -554,8 +572,6 @@ async def update_order(id: str, body: OrderCreate, user=Depends(require_roles("o
     if not existing:
         raise HTTPException(status_code=404, detail="Order tidak ditemukan")
     o = body.model_dump()
-    if len(o.get("drivers", [])) > 4:
-        raise HTTPException(status_code=400, detail="Maksimal 4 driver dalam satu order")
     total_gaji = sum(float(d.get("gaji") or 0) for d in o.get("drivers", []))
     if total_gaji > float(o.get("harga") or 0):
         raise HTTPException(status_code=400, detail="Total gaji driver tidak boleh melebihi harga sewa")
@@ -792,6 +808,215 @@ async def export_drivers(user=Depends(get_current_user), bulan: Optional[int] = 
     headers = ["Driver", "Jumlah Tugas", "Total Gaji"]
     rows = [[d["nama"], d["tugas"], d["total_gaji"]] for d in data["drivers"]]
     return xlsx_response(make_xlsx("Analisis Driver", headers, rows), "analisis_driver.xlsx")
+
+
+# ============================ KASBON DRIVER ============================
+class KasbonCreate(BaseModel):
+    driver_id: str
+    tanggal: str
+    jumlah: float
+
+
+@api_router.post("/kasbon")
+async def create_kasbon(body: KasbonCreate, user=Depends(require_roles("owner", "admin", "operator"))):
+    drv = await db.drivers.find_one({"driver_id": body.driver_id}, {"_id": 0})
+    doc = {"id": str(uuid.uuid4()), "driver_id": body.driver_id,
+           "driver_nama": (drv or {}).get("nama") or body.driver_id,
+           "tanggal": body.tanggal, "jumlah": float(body.jumlah or 0), "jenis": "pinjam",
+           "created_by": user["email"], "created_at": now_utc().isoformat()}
+    await db.kasbon.insert_one(dict(doc))
+    return clean(doc)
+
+
+@api_router.get("/kasbon/summary")
+async def kasbon_summary(user=Depends(get_current_user)):
+    rows = await db.kasbon.find({}, {"_id": 0}).to_list(50000)
+    agg = defaultdict(lambda: {"jumlah": 0, "total_pinjam": 0.0, "total_potong": 0.0, "driver_nama": ""})
+    for r in rows:
+        did = r.get("driver_id") or "-"
+        a = agg[did]
+        a["driver_nama"] = r.get("driver_nama") or did
+        if r.get("jenis") == "potong":
+            a["total_potong"] += float(r.get("jumlah") or 0)
+        else:
+            a["jumlah"] += 1
+            a["total_pinjam"] += float(r.get("jumlah") or 0)
+    out = [{"driver_id": did, "driver_nama": a["driver_nama"], "jumlah": a["jumlah"],
+            "total_pinjam": a["total_pinjam"], "total_potong": a["total_potong"],
+            "sisa": a["total_pinjam"] - a["total_potong"]} for did, a in agg.items()]
+    out.sort(key=lambda x: x["sisa"], reverse=True)
+    return {"drivers": out}
+
+
+@api_router.get("/kasbon/driver/{driver_id}")
+async def kasbon_by_driver(driver_id: str, user=Depends(get_current_user)):
+    rows = await db.kasbon.find({"driver_id": driver_id}, {"_id": 0}).to_list(50000)
+    pinjam = sorted([r for r in rows if r.get("jenis") != "potong"], key=lambda x: x.get("tanggal") or "")
+    potong = sorted([r for r in rows if r.get("jenis") == "potong"], key=lambda x: x.get("tanggal") or "")
+    total_pinjam = sum(float(r.get("jumlah") or 0) for r in pinjam)
+    total_potong = sum(float(r.get("jumlah") or 0) for r in potong)
+    drv = await db.drivers.find_one({"driver_id": driver_id}, {"_id": 0})
+    return {"driver_id": driver_id, "driver_nama": (drv or {}).get("nama") or driver_id,
+            "pinjam": pinjam, "potong": potong, "total_pinjam": total_pinjam,
+            "total_potong": total_potong, "sisa": total_pinjam - total_potong}
+
+
+@api_router.delete("/kasbon/{id}")
+async def delete_kasbon(id: str, user=Depends(require_roles("owner", "admin"))):
+    await db.kasbon.delete_one({"id": id})
+    return {"ok": True}
+
+
+# ============================ PENGGAJIAN / SLIP GAJI ============================
+BULAN_ID = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli",
+            "Agustus", "September", "Oktober", "November", "Desember"]
+
+
+def _rp(n):
+    return "Rp " + format(int(round(float(n or 0))), ",d").replace(",", ".")
+
+
+def payroll_range(tahun, bulan, periode):
+    import calendar
+    if int(periode) == 1:
+        return f"{int(tahun):04d}-{int(bulan):02d}-01", f"{int(tahun):04d}-{int(bulan):02d}-15"
+    last = calendar.monthrange(int(tahun), int(bulan))[1]
+    return f"{int(tahun):04d}-{int(bulan):02d}-16", f"{int(tahun):04d}-{int(bulan):02d}-{last:02d}"
+
+
+@api_router.get("/payroll")
+async def payroll(user=Depends(get_current_user), tahun: Optional[int] = None,
+                  bulan: Optional[int] = None, periode: int = 1, driver_id: Optional[str] = None):
+    if not tahun or not bulan:
+        return {"drivers": []}
+    start, end = payroll_range(tahun, bulan, periode)
+    orders = await db.orders.find({}, {"_id": 0}).to_list(50000)
+    by_driver = defaultdict(lambda: {"driver_nama": "", "items": [], "total_gaji": 0.0})
+    for o in orders:
+        for d in o.get("drivers", []):
+            tg = d.get("tanggal") or o.get("tanggal_mulai")
+            if not tg or not (start <= tg <= end):
+                continue
+            did = d.get("driver_id") or d.get("driver_nama") or "-"
+            if driver_id and did != driver_id:
+                continue
+            a = by_driver[did]
+            a["driver_nama"] = d.get("driver_nama") or did
+            a["items"].append({"tanggal": tg, "id_order": o.get("id_order"),
+                               "rute": d.get("segmen") or o.get("rute"), "unit_nama": o.get("unit_nama"),
+                               "penyewa_nama": o.get("penyewa_nama"), "gaji": float(d.get("gaji") or 0)})
+            a["total_gaji"] += float(d.get("gaji") or 0)
+    result = []
+    for did, a in by_driver.items():
+        a["items"].sort(key=lambda x: x["tanggal"])
+        krows = await db.kasbon.find({"driver_id": did}, {"_id": 0}).to_list(20000)
+        sisa = (sum(float(r.get("jumlah") or 0) for r in krows if r.get("jenis") != "potong")
+                - sum(float(r.get("jumlah") or 0) for r in krows if r.get("jenis") == "potong"))
+        result.append({"driver_id": did, "driver_nama": a["driver_nama"], "items": a["items"],
+                       "total_gaji": a["total_gaji"], "sisa_kasbon": sisa})
+    result.sort(key=lambda x: x["total_gaji"], reverse=True)
+    return {"periode": {"start": start, "end": end, "tahun": tahun, "bulan": bulan, "periode": periode},
+            "drivers": result}
+
+
+class SlipBody(BaseModel):
+    driver_id: str
+    tahun: int
+    bulan: int
+    periode: int = 1
+    potongan_kasbon: float = 0
+
+
+def build_slip_pdf(drv, tahun, bulan, periode, potong, payday):
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=18 * mm, bottomMargin=18 * mm,
+                            leftMargin=18 * mm, rightMargin=18 * mm)
+    styles = getSampleStyleSheet()
+    h = ParagraphStyle("h", parent=styles["Title"], fontSize=15, spaceAfter=2)
+    sub = ParagraphStyle("sub", parent=styles["Normal"], fontSize=9, textColor=colors.HexColor("#059669"))
+    small = ParagraphStyle("small", parent=styles["Normal"], fontSize=9)
+    periode_lbl = "Tanggal 1 - 15" if int(periode) == 1 else "Tanggal 16 - Akhir Bulan"
+    el = []
+    el.append(Paragraph("PT. JAWA DWIPA SOLUTIONS", h))
+    el.append(Paragraph("Slip Gaji Driver &middot; Surabaya", sub))
+    el.append(Spacer(1, 10))
+    info = [["Nama Driver", ": " + str(drv.get("driver_nama") or "-"), "Periode", ": " + periode_lbl],
+            ["ID Driver", ": " + str(drv.get("driver_id") or "-"), "Bulan", f": {BULAN_ID[int(bulan)]} {int(tahun)}"],
+            ["Tanggal Bayar", ": " + str(payday), "", ""]]
+    ti = Table(info, colWidths=[75, 150, 70, 130])
+    ti.setStyle(TableStyle([("FONTSIZE", (0, 0), (-1, -1), 9), ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                            ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]))
+    el.append(ti)
+    el.append(Spacer(1, 12))
+    data = [["Tanggal", "ID Order", "Rute", "Unit", "Gaji"]]
+    for it in drv.get("items", []):
+        data.append([it.get("tanggal"), it.get("id_order"), (it.get("rute") or "")[:38],
+                     it.get("unit_nama") or "", _rp(it.get("gaji"))])
+    if len(data) == 1:
+        data.append(["-", "-", "Tidak ada penugasan", "-", _rp(0)])
+    t = Table(data, colWidths=[62, 70, 180, 80, 78], repeatRows=1)
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#059669")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTSIZE", (0, 0), (-1, -1), 8.5), ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("ALIGN", (4, 0), (4, -1), "RIGHT"), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f1f5f9")]),
+        ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
+    el.append(t)
+    el.append(Spacer(1, 10))
+    total = float(drv.get("total_gaji") or 0)
+    bersih = total - float(potong or 0)
+    summ = [["Total Gaji Kotor", _rp(total)],
+            ["Potongan Kasbon", "- " + _rp(potong)],
+            ["Gaji Bersih Diterima", _rp(bersih)]]
+    ts = Table(summ, colWidths=[300, 173])
+    ts.setStyle(TableStyle([
+        ("FONTSIZE", (0, 0), (-1, -1), 10), ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+        ("LINEABOVE", (0, 2), (-1, 2), 0.8, colors.HexColor("#0f172a")),
+        ("FONTNAME", (0, 2), (-1, 2), "Helvetica-Bold"),
+        ("TEXTCOLOR", (0, 2), (-1, 2), colors.HexColor("#059669")),
+        ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
+    el.append(ts)
+    el.append(Spacer(1, 6))
+    el.append(Paragraph(f"Sisa kasbon setelah potongan: {_rp(float(drv.get('sisa_kasbon') or 0) - float(potong or 0))}", small))
+    el.append(Spacer(1, 30))
+    sign = [["Diterima oleh,", "", "Hormat kami,"],
+            ["", "", ""], ["", "", ""],
+            [f"( {drv.get('driver_nama') or '________'} )", "", "( ________________ )"]]
+    tsign = Table(sign, colWidths=[190, 90, 190])
+    tsign.setStyle(TableStyle([("FONTSIZE", (0, 0), (-1, -1), 9), ("ALIGN", (0, 0), (-1, -1), "CENTER")]))
+    el.append(tsign)
+    doc.build(el)
+    buf.seek(0)
+    return buf
+
+
+@api_router.post("/payroll/slip")
+async def payroll_slip(body: SlipBody, user=Depends(require_roles("owner", "admin", "operator"))):
+    data = await payroll(user=user, tahun=body.tahun, bulan=body.bulan, periode=body.periode, driver_id=body.driver_id)
+    drv = next((d for d in data["drivers"] if d["driver_id"] == body.driver_id), None)
+    if not drv:
+        raise HTTPException(status_code=404, detail="Tidak ada data gaji untuk driver pada periode ini")
+    potong = float(body.potongan_kasbon or 0)
+    if potong < 0:
+        raise HTTPException(status_code=400, detail="Nominal potongan tidak valid")
+    payday = payroll_range(body.tahun, body.bulan, body.periode)[1]
+    if potong > 0:
+        await db.kasbon.insert_one({"id": str(uuid.uuid4()), "driver_id": body.driver_id,
+            "driver_nama": drv["driver_nama"], "tanggal": payday, "jumlah": potong, "jenis": "potong",
+            "created_by": user["email"], "created_at": now_utc().isoformat(),
+            "ket": f"Potongan gaji {BULAN_ID[int(body.bulan)]} {int(body.tahun)} periode {body.periode}"})
+    pdf = build_slip_pdf(drv, body.tahun, body.bulan, body.periode, potong, payday)
+    safe = "".join(c for c in (drv["driver_nama"] or "driver") if c.isalnum() or c in " _-").replace(" ", "_")
+    fname = f"slip_gaji_{safe}_{int(body.tahun)}{int(body.bulan):02d}_p{body.periode}.pdf"
+    return StreamingResponse(pdf, media_type="application/pdf",
+                             headers={"Content-Disposition": f"attachment; filename={fname}"})
 
 
 app.include_router(api_router)

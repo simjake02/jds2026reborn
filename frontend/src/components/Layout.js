@@ -3,7 +3,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useState } from "react";
 import {
   LayoutDashboard, Users, Car, UserCog, ClipboardList, Database,
-  LogOut, Menu, X, TrendingUp, ShieldCheck
+  LogOut, Menu, X, TrendingUp, ShieldCheck, Wallet, FileText
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import logo from "@/assets/logo.png";
@@ -17,6 +17,8 @@ const nav = [
   { to: "/analisis-driver", label: "Performa Driver", icon: TrendingUp, roles: ["owner", "admin", "operator"] },
   { to: "/transaksi", label: "Transaksi Order", icon: ClipboardList, roles: ["owner", "admin", "operator"] },
   { to: "/master", label: "Data Master", icon: Database, roles: ["owner", "admin", "operator"] },
+  { to: "/kasbon", label: "Kasbon Driver", icon: Wallet, roles: ["owner", "admin", "operator"] },
+  { to: "/slip-gaji", label: "Slip Gaji", icon: FileText, roles: ["owner", "admin", "operator"] },
   { to: "/pengguna", label: "Manajemen Pengguna", icon: UserCog, roles: ["owner", "admin", "operator"] },
 ];
 

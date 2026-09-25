@@ -261,3 +261,86 @@ agent_communication:
     -agent: "testing"
     -message: "✓ ALL BACKEND TESTS PASSED (6/6). Tested all high-priority features: (1) Orders filter bulan+tahun with ascending sort by id_order works correctly - 71 Sept orders filtered and sorted properly. (2) Order nominal_dp field persists and updates correctly. (3) Driver foto_sim base64 data URLs save and retrieve correctly. (4) Analytics drivers returns tasks[] array with correct structure and count, filter works. (5) Admin self-edit authorization works - admin can edit self (name/email/password), role/active changes ignored, cannot edit others (403), owner can edit all. (6) Export orders returns xlsx with correct content-type, respects bulan/tahun params. NOTE: Owner password was incorrect (not matching test_credentials.md), reset via /api/auth/reset-password to Jds@2025 before testing. All backend APIs working correctly."
 
+
+
+## ===== BATCH 2 (Kasbon, Slip Gaji, per-day driver, cascade master) =====
+backend:
+  - task: "Cascade update master -> orders (client/unit/driver rename propagates)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "PUT /clients/{id}, /units/{id}, /drivers/{id} now update all matching orders (penyewa_id/unit_id/driver_id) with new nama (and tipe for client). Driver rename also updates embedded orders.drivers[].driver_nama via arrayFilters and kasbon records. Verify: rename a driver, then GET /orders shows new driver_nama; GET /analytics/drivers reflects new name."
+        -working: true
+        -agent: "testing"
+        -comment: "✓ PASSED: Tested all 3 cascade updates. (1) Driver: Renamed DR038 from 'Pak Muin' to test name, verified orders.drivers[].driver_nama updated correctly, analytics/drivers shows new name with correct task count (10 tasks, 5785000 gaji). (2) Unit: Renamed U0001 'Innova Reborn', verified orders.unit_nama updated. (3) Client: Renamed A0002 'DA', verified orders.penyewa_nama updated. All cascade updates propagate correctly to orders collection. Reverted all test changes."
+  - task: "Per-day driver assignment (OrderDriverItem.tanggal) + removed max-4 cap"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "OrderDriverItem has optional tanggal. create/update no longer reject >4 drivers. Verify creating an order with multiple driver rows each with a tanggal persists tanggal, and total gaji<=harga rule still enforced."
+        -working: true
+        -agent: "testing"
+        -comment: "✓ PASSED: Created order with 6 drivers (no max-4 cap error), each with unique per-day tanggal field (2025-11-10 through 2025-11-15). All tanggal values persisted correctly in orders.drivers[].tanggal. Verified validation still works: total_gaji > harga correctly returns 400 error. Cleaned up test order. Per-day assignment feature works correctly."
+  - task: "Kasbon endpoints (summary, by-driver, create, delete)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "POST /kasbon {driver_id,tanggal,jumlah}; GET /kasbon/summary aggregates jumlah(count pinjam)/total_pinjam/total_potong/sisa; GET /kasbon/driver/{driver_id} lists pinjam & potong + sisa; DELETE /kasbon/{id}. Verify create then summary/by-driver reflect it; sisa = total_pinjam - total_potong."
+        -working: true
+        -agent: "testing"
+        -comment: "✓ PASSED: All kasbon endpoints working correctly. (1) POST /kasbon creates entry with jumlah=1000000. (2) GET /kasbon/summary shows driver with correct aggregation (jumlah count=1, total_pinjam=1000000, total_potong=0, sisa=1000000). (3) GET /kasbon/driver/{driver_id} returns pinjam/potong lists with correct totals and sisa calculation (sisa = total_pinjam - total_potong). (4) DELETE /kasbon/{id} successfully removes entry. All CRUD operations work correctly."
+  - task: "Payroll compute + Slip PDF + kasbon deduction"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "GET /payroll?tahun&bulan&periode(1|2)&driver_id computes per-driver items bucketed: periode1=day1-15, periode2=day16-end (falls back to order tanggal_mulai for legacy rows). POST /payroll/slip {driver_id,tahun,bulan,periode,potongan_kasbon} records a kasbon 'potong' entry if potongan>0 and returns application/pdf (200). Verify: create kasbon for a driver, run payroll for a period where the driver has assignments, POST slip with potongan_kasbon reduces sisa in /kasbon/driver, and response is a PDF."
+        -working: true
+        -agent: "testing"
+        -comment: "✓ PASSED: All payroll features working correctly. (1) GET /payroll?tahun=2025&bulan=8&periode=1 returns 18 drivers with items correctly bucketed to days 01-15. (2) periode=2 returns 26 drivers with items correctly bucketed to days 16-31. All date bucketing verified correct. (3) POST /payroll/slip generates PDF (Content-Type: application/pdf, size ~2850 bytes) and records kasbon potong entry. (4) Kasbon deduction verified: sisa decreased by exactly 500000 after slip generation, potong entry added to kasbon records. (5) POST /payroll/slip for driver with no assignments correctly returns 404. Payroll computation, PDF generation, and kasbon integration all working correctly."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.2"
+  test_sequence: 2
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "Cascade update master -> orders (client/unit/driver rename propagates)"
+    - "Kasbon endpoints (summary, by-driver, create, delete)"
+    - "Payroll compute + Slip PDF + kasbon deduction"
+    - "Per-day driver assignment (OrderDriverItem.tanggal) + removed max-4 cap"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    -agent: "main"
+    -message: "BATCH 2 backend ready. Test NEW endpoints & cascade only (see BATCH 2 test_plan). Credentials in /app/memory/test_credentials.md (owner adityapermanarh62@gmail.com / Jds@2025). Seeded data: 299 orders Aug-Oct 2025 (id_order YYMMNNNNN, tanggal_mulai in 2025-08..2025-10). NOTE legacy order driver rows have no per-day tanggal, so payroll uses order tanggal_mulai as fallback. Good period to test payroll: bulan=8 tahun=2025 periode=1 (days 1-15) and periode=2 (16-31). For kasbon+slip flow: pick a driver_id (e.g. from GET /drivers), POST /kasbon jumlah=1000000, run GET /payroll for a period where that driver has tasks, then POST /payroll/slip with potongan_kasbon=500000 and confirm PDF 200 + sisa decreased by 500000. For cascade: PUT /drivers/{id} changing nama and confirm orders + analytics reflect it (then revert if easy)."
+    -agent: "testing"
+    -message: "✅ ALL BATCH 2 BACKEND TESTS PASSED (4/4). Comprehensive testing completed: (1) CASCADE UPDATES: Driver/unit/client rename correctly propagates to orders collection and analytics. Tested with real data (DR038, U0001, A0002), verified updates in orders and analytics/drivers endpoint. (2) PER-DAY DRIVER ASSIGNMENT: Successfully created order with 6 drivers (no max-4 cap), each with unique tanggal field persisted correctly. Validation (total_gaji <= harga) still enforced. (3) KASBON ENDPOINTS: All CRUD operations working - POST creates, GET /summary aggregates correctly (sisa = total_pinjam - total_potong), GET /driver/{id} returns detailed lists, DELETE removes entries. (4) PAYROLL + SLIP PDF: Periode bucketing correct (periode 1: days 1-15, periode 2: days 16-31), PDF generation works (application/pdf, ~2850 bytes), kasbon deduction accurate (sisa decreased by exact potongan amount, potong entry recorded), 404 for drivers with no assignments. All backend APIs working correctly with no issues."
+
